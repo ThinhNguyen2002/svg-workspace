@@ -3,3 +3,9 @@ dist/
 .env
 .DS_Store
 .superpowers/
+vite.config.js
+vite.config.d.ts
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
+scripts/scan-icons.js
+scripts/scan-icons.d.ts
