@@ -133,4 +133,51 @@ describe('parseIconSource', () => {
       reason: 'Root JSX element must be Svg, found View'
     });
   });
+
+  it('rejects unsupported child SVG elements', () => {
+    const result = parseIconSource(`
+      import Svg, { Text } from 'react-native-svg';
+
+      export const LabelIcon = () => (
+        <Svg viewBox="0 0 24 24">
+          <Text>Label</Text>
+        </Svg>
+      );
+    `);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Unsupported SVG element Text'
+    });
+  });
+
+  it('rejects unsupported static SVG attributes', () => {
+    const result = parseIconSource(`
+      import Svg from 'react-native-svg';
+
+      export const AccessibleIcon = () => (
+        <Svg accessibilityLabel="x" />
+      );
+    `);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Unsupported SVG attribute accessibilityLabel'
+    });
+  });
+
+  it('rejects namespaced SVG attributes with a clear attribute name', () => {
+    const result = parseIconSource(`
+      import Svg from 'react-native-svg';
+
+      export const NamespacedIcon = () => (
+        <Svg xml:space="preserve" />
+      );
+    `);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Unsupported SVG attribute xml:space'
+    });
+  });
 });

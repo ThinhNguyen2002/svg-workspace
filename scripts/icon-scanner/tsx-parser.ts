@@ -12,6 +12,45 @@ type RenderedSvg = { ok: true; svg: string } | { ok: false; reason: string };
 type RenderedAttributes = { ok: true; attributes: string[] } | { ok: false; reason: string };
 type RenderedAttributeValue = { ok: true; value: string } | { ok: false; reason: string };
 
+const supportedSvgAttributes = new Set([
+  'id',
+  'width',
+  'height',
+  'viewBox',
+  'fill',
+  'fill-opacity',
+  'fill-rule',
+  'stroke',
+  'stroke-width',
+  'stroke-linecap',
+  'stroke-linejoin',
+  'stroke-miterlimit',
+  'stroke-opacity',
+  'stroke-dasharray',
+  'stroke-dashoffset',
+  'opacity',
+  'd',
+  'cx',
+  'cy',
+  'r',
+  'rx',
+  'ry',
+  'x',
+  'x1',
+  'x2',
+  'y',
+  'y1',
+  'y2',
+  'points',
+  'transform',
+  'clip-path',
+  'clip-rule',
+  'mask',
+  'offset',
+  'stop-color',
+  'stop-opacity'
+]);
+
 export function parseIconSource(source: string): ParsedIconResult {
   let ast: t.File;
   try {
@@ -181,12 +220,17 @@ function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[])
     }
 
     const name = getJsxAttributeName(attribute.name);
+    const convertedName = convertSvgAttributeName(name);
+    if (!supportedSvgAttributes.has(convertedName)) {
+      return { ok: false, reason: `Unsupported SVG attribute ${name}` };
+    }
+
     const value = renderAttributeValue(name, attribute.value);
     if (!value.ok) {
       return value;
     }
 
-    rendered.push(`${convertSvgAttributeName(name)}="${escapeAttribute(value.value)}"`);
+    rendered.push(`${convertedName}="${escapeAttribute(value.value)}"`);
   }
 
   return { ok: true, attributes: rendered };
@@ -233,6 +277,10 @@ function getJsxElementName(name: t.JSXIdentifier | t.JSXMemberExpression | t.JSX
 function getJsxAttributeName(name: t.JSXIdentifier | t.JSXNamespacedName): string {
   if (t.isJSXIdentifier(name)) {
     return name.name;
+  }
+
+  if (t.isJSXNamespacedName(name)) {
+    return `${name.namespace.name}:${name.name.name}`;
   }
 
   return 'unsupported';
