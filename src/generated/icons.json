@@ -1,0 +1,8 @@
+{
+  "sourceDir": null,
+  "generatedAt": null,
+  "status": "setup-error",
+  "setupError": "Run npm run scan:icons after setting RN_ICON_SOURCE_DIR in .env.",
+  "icons": [],
+  "errors": []
+}
