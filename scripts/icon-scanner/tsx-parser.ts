@@ -13,10 +13,16 @@ type RenderedAttributes = { ok: true; attributes: string[] } | { ok: false; reas
 type RenderedAttributeValue = { ok: true; value: string } | { ok: false; reason: string };
 
 export function parseIconSource(source: string): ParsedIconResult {
-  const ast = parse(source, {
-    sourceType: 'module',
-    plugins: ['typescript', 'jsx']
-  });
+  let ast: t.File;
+  try {
+    ast = parse(source, {
+      sourceType: 'module',
+      plugins: ['typescript', 'jsx']
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    return { ok: false, reason: `Unable to parse source: ${message}` };
+  }
 
   const candidate = findExportedComponent(ast);
   if (!candidate) {
@@ -233,7 +239,7 @@ function getJsxAttributeName(name: t.JSXIdentifier | t.JSXNamespacedName): strin
 }
 
 function escapeAttribute(value: string): string {
-  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  return value.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
 function escapeText(value: string): string {

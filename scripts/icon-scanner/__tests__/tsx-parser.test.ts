@@ -58,4 +58,79 @@ describe('parseIconSource', () => {
       reason: 'Unsupported JSX expression container in Svg children'
     });
   });
+
+  it('returns a structured error for malformed source', () => {
+    const result = parseIconSource(`
+      export const BrokenIcon = (
+    `);
+
+    expect(result.ok).toBe(false);
+    if (!result.ok) {
+      expect(result.reason).toContain('Unable to parse source:');
+    }
+  });
+
+  it('escapes attribute values that contain markup-sensitive characters', () => {
+    const result = parseIconSource(`
+      import Svg, { Path } from 'react-native-svg';
+
+      export const EscapeIcon = () => (
+        <Svg viewBox="0 0 24 24">
+          <Path d="M1 < 2 & 3" />
+        </Svg>
+      );
+    `);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.icon.svg).toContain('d="M1 &lt; 2 &amp; 3"');
+    }
+  });
+
+  it('rejects unsupported dynamic attribute expressions', () => {
+    const result = parseIconSource(`
+      import Svg, { Path } from 'react-native-svg';
+
+      export const DynamicIcon = ({ pathData }) => (
+        <Svg viewBox="0 0 24 24">
+          <Path d={pathData} />
+        </Svg>
+      );
+    `);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Unsupported dynamic JSX expression in d'
+    });
+  });
+
+  it('rejects JSX spread attributes', () => {
+    const result = parseIconSource(`
+      import Svg, { Path } from 'react-native-svg';
+
+      export const SpreadIcon = props => (
+        <Svg viewBox="0 0 24 24">
+          <Path {...props} />
+        </Svg>
+      );
+    `);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Unsupported JSX spread attribute'
+    });
+  });
+
+  it('rejects unsupported root elements with a clear error', () => {
+    const result = parseIconSource(`
+      export const NotSvgIcon = () => (
+        <View />
+      );
+    `);
+
+    expect(result).toEqual({
+      ok: false,
+      reason: 'Root JSX element must be Svg, found View'
+    });
+  });
 });
