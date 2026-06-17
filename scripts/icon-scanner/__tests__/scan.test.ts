@@ -1,11 +1,16 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it } from 'vitest';
 import { scanIconDirectory, writeCatalogForSourceDir } from '../scan';
 
 const fixtureDir = path.resolve('test/fixtures/icons');
+const tmpDir = path.resolve('test/.tmp');
 
 describe('scanIconDirectory', () => {
+  afterEach(async () => {
+    await fs.rm(tmpDir, { recursive: true, force: true });
+  });
+
   it('scans supported icons and records unsupported files', async () => {
     const catalog = await scanIconDirectory(fixtureDir);
 
@@ -33,8 +38,8 @@ describe('scanIconDirectory', () => {
   });
 
   it('writes setup-error JSON for a missing directory and throws after writing', async () => {
-    const outputPath = path.resolve('test/.tmp/missing-icons.json');
-    const missingDir = path.resolve('test/.tmp/does-not-exist');
+    const outputPath = path.join(tmpDir, 'missing-icons.json');
+    const missingDir = path.join(tmpDir, 'does-not-exist');
     await fs.mkdir(path.dirname(outputPath), { recursive: true });
     await fs.rm(outputPath, { force: true });
 

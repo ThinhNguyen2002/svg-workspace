@@ -4,6 +4,8 @@ import { writeCatalogForSourceDir } from './icon-scanner/scan';
 
 export async function runWatch(): Promise<void> {
   const sourceDir = process.env.RN_ICON_SOURCE_DIR;
+  let running = false;
+  let pending = false;
 
   async function scan() {
     try {
@@ -14,7 +16,29 @@ export async function runWatch(): Promise<void> {
     }
   }
 
-  await scan();
+  async function drainScans(): Promise<void> {
+    if (running) {
+      return;
+    }
+
+    running = true;
+    try {
+      while (pending) {
+        pending = false;
+        await scan();
+      }
+    } finally {
+      running = false;
+    }
+  }
+
+  function requestScan(): void {
+    pending = true;
+    void drainScans();
+  }
+
+  pending = true;
+  await drainScans();
 
   if (!sourceDir) {
     return;
@@ -25,9 +49,9 @@ export async function runWatch(): Promise<void> {
       cwd: sourceDir,
       ignoreInitial: true
     })
-    .on('add', scan)
-    .on('change', scan)
-    .on('unlink', scan);
+    .on('add', requestScan)
+    .on('change', requestScan)
+    .on('unlink', requestScan);
 
   console.log(`[icon-view] watching ${sourceDir}`);
 }
