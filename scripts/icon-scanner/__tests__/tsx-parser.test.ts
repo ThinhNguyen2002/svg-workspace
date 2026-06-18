@@ -17,6 +17,10 @@ describe('parseIconSource', () => {
       ok: true,
       icon: {
         name: 'ArrowLeftIcon',
+        props: [
+          { name: 'size', value: '{24}', shorthand: false },
+          { name: 'color', value: '{"#111"}', shorthand: false }
+        ],
         svg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M15 18l-6-6 6-6" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>'
       }
     });
@@ -104,6 +108,10 @@ describe('parseIconSource', () => {
       ok: true,
       icon: {
         name: 'ActiveRadio',
+        props: [
+          { name: 'width', value: '{SIZE_VALUE._24}', shorthand: false },
+          { name: 'height', value: '{SIZE_VALUE._24}', shorthand: false }
+        ],
         svg: '<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>'
       }
     });
@@ -138,6 +146,11 @@ describe('parseIconSource', () => {
       ok: true,
       icon: {
         name: 'ProfileIcon',
+        props: [
+          { name: 'width', value: '{SIZE_VALUE._24}', shorthand: false },
+          { name: 'height', value: '{SIZE_VALUE._24}', shorthand: false },
+          { name: 'isFocused', value: null, shorthand: true }
+        ],
         svg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M1 1" fill="#7B50B3"/></svg>'
       }
     });
@@ -167,12 +180,17 @@ describe('parseIconSource', () => {
       ok: true,
       icon: {
         name: 'InvoiceIcon',
+        props: [
+          { name: 'width', value: '{SIZE_VALUE._16}', shorthand: false },
+          { name: 'height', value: '{SIZE_VALUE._16}', shorthand: false },
+          { name: 'fill', value: '{theme.colors.onSurfaceVariant}', shorthand: false }
+        ],
         svg: '<svg width="16" height="16" viewBox="0 0 16 16" fill="#7B50B3"><path d="M1 1" fill="#7B50B3"/></svg>'
       }
     });
   });
 
-  it('returns a structured error for unsupported conditional JSX', () => {
+  it('supports conditional JSX children using preview defaults', () => {
     const result = parseIconSource(`
       import Svg, { Path } from 'react-native-svg';
 
@@ -184,8 +202,12 @@ describe('parseIconSource', () => {
     `);
 
     expect(result).toEqual({
-      ok: false,
-      reason: 'Unsupported JSX expression container in Svg children'
+      ok: true,
+      icon: {
+        name: 'AlertIcon',
+        props: [{ name: 'filled', value: '{/* value */}', shorthand: false }],
+        svg: '<svg viewBox="0 0 24 24"><path d="M1 1"/></svg>'
+      }
     });
   });
 
@@ -264,7 +286,7 @@ describe('parseIconSource', () => {
     });
   });
 
-  it('rejects unsupported child SVG elements', () => {
+  it('supports text SVG elements', () => {
     const result = parseIconSource(`
       import Svg, { Text } from 'react-native-svg';
 
@@ -276,8 +298,11 @@ describe('parseIconSource', () => {
     `);
 
     expect(result).toEqual({
-      ok: false,
-      reason: 'Unsupported SVG element Text'
+      ok: true,
+      icon: {
+        name: 'LabelIcon',
+        svg: '<svg viewBox="0 0 24 24"><text>Label</text></svg>'
+      }
     });
   });
 

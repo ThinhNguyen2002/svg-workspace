@@ -1,9 +1,16 @@
+export type IconPropUsage = {
+  name: string;
+  value: string | null;
+  shorthand: boolean;
+};
+
 export type IconRecord = {
   name: string;
   category: string;
   filePath: string;
   svg: string;
   importSnippet: string;
+  props?: IconPropUsage[];
 };
 
 export type IconScanError = {

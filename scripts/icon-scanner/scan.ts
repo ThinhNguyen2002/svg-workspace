@@ -28,7 +28,11 @@ export async function scanIconDirectory(sourceDir: string): Promise<IconCatalog>
     const relativePath = normalizeRelativePath(entry);
     const absolutePath = path.join(absoluteSourceDir, relativePath);
     const source = await fs.readFile(absolutePath, 'utf8');
-    const parsed = parseIconSource(source);
+    const parsed = parseIconSource(source, {
+      filePath: absolutePath,
+      sourceDir: absoluteSourceDir,
+      visitedFiles: new Set([absolutePath])
+    });
 
     if (!parsed.ok) {
       catalog.errors.push({ filePath: relativePath, reason: parsed.reason });
@@ -40,7 +44,8 @@ export async function scanIconDirectory(sourceDir: string): Promise<IconCatalog>
       category: deriveCategory(relativePath),
       filePath: relativePath,
       svg: parsed.icon.svg,
-      importSnippet: makeImportSnippet(parsed.icon.name, relativePath)
+      importSnippet: makeImportSnippet(parsed.icon.name, relativePath),
+      props: parsed.icon.props
     });
   }
 
