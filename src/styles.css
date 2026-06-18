@@ -48,8 +48,10 @@ button {
 }
 
 .app-header,
+.app-tabs,
 .source-row,
 .tool-row,
+.converter-shell,
 .viewer-layout,
 .unsupported-files,
 .empty-state {
@@ -99,6 +101,41 @@ button {
   color: #111827;
   font-size: 24px;
   line-height: 1.1;
+}
+
+.app-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+
+.app-tabs button {
+  min-height: 42px;
+  border: 1px solid #dbe2ec;
+  border-radius: 999px;
+  padding: 8px 16px;
+  background: #fff;
+  color: #4b5565;
+  font-weight: 800;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background 120ms ease,
+    color 120ms ease;
+}
+
+.app-tabs button:hover,
+.app-tabs button:focus-visible {
+  border-color: #67bf3d;
+  outline: 3px solid rgba(167, 252, 124, 0.36);
+  outline-offset: 2px;
+}
+
+.app-tabs button.active {
+  border-color: #67bf3d;
+  background: var(--color-primary);
+  color: var(--color-primary-text);
+  box-shadow: 0 10px 22px rgba(84, 168, 52, 0.2);
 }
 
 .source-row {
@@ -503,6 +540,232 @@ button {
   white-space: pre;
 }
 
+.converter-shell {
+  display: grid;
+  gap: 16px;
+}
+
+.converter-toolbar {
+  display: grid;
+  grid-template-columns: minmax(220px, 1fr) minmax(160px, 220px) auto auto auto;
+  gap: 12px;
+  align-items: end;
+  border: 1px solid #dbe2ec;
+  border-radius: 14px;
+  padding: 14px;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(31, 42, 68, 0.08);
+}
+
+.converter-toolbar label,
+.converter-card label {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  color: #4b5565;
+  font-size: 13px;
+  font-weight: 750;
+}
+
+.converter-toolbar input,
+.converter-toolbar select,
+.converter-toolbar button,
+.file-upload-button,
+.converter-card-header button {
+  min-height: 42px;
+  border: 1px solid #cfd8e6;
+  border-radius: 10px;
+  background: #fff;
+  color: #172033;
+  font-weight: 750;
+  transition:
+    border-color 120ms ease,
+    box-shadow 120ms ease,
+    background 120ms ease;
+}
+
+.converter-toolbar input {
+  width: 100%;
+  padding: 10px 12px;
+}
+
+.converter-toolbar select {
+  width: 100%;
+  appearance: none;
+  padding: 10px 40px 10px 12px;
+  background-image:
+    linear-gradient(45deg, transparent 50%, #667085 50%),
+    linear-gradient(135deg, #667085 50%, transparent 50%);
+  background-position:
+    calc(100% - 18px) 18px,
+    calc(100% - 13px) 18px;
+  background-size:
+    5px 5px,
+    5px 5px;
+  background-repeat: no-repeat;
+}
+
+.converter-toolbar button {
+  padding: 8px 14px;
+}
+
+.file-upload-button {
+  display: grid;
+  place-items: center;
+  padding: 8px 14px;
+}
+
+.file-upload-button input {
+  display: none;
+}
+
+.converter-toolbar button:hover,
+.converter-toolbar button:focus-visible,
+.file-upload-button:hover,
+.file-upload-button:focus-within,
+.converter-card-header button:hover,
+.converter-card-header button:focus-visible,
+.converter-toolbar input:focus,
+.converter-toolbar select:focus {
+  border-color: #67bf3d;
+  outline: 3px solid rgba(167, 252, 124, 0.42);
+  outline-offset: 1px;
+}
+
+.converter-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(280px, 360px);
+  gap: 16px;
+  align-items: start;
+}
+
+.converter-card {
+  display: grid;
+  overflow: hidden;
+  border: 1px solid #dbe2ec;
+  border-radius: 14px;
+  background: #fff;
+  box-shadow: 0 12px 34px rgba(31, 42, 68, 0.08);
+}
+
+.converter-card-header {
+  display: flex;
+  min-height: 50px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  border-bottom: 1px solid #e5eaf2;
+  padding: 10px 14px;
+}
+
+.converter-card-header h2 {
+  margin: 0;
+  color: #111827;
+  font-size: 16px;
+}
+
+.converter-card-header button {
+  display: grid;
+  width: 36px;
+  min-height: 36px;
+  place-items: center;
+  padding: 0;
+}
+
+.converter-card-header button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+.code-editor {
+  min-height: 430px;
+  background: #fbfdff;
+  color: #172033;
+}
+
+.code-editor .cm-editor {
+  min-height: 430px;
+  background: #fbfdff;
+  font-size: 13px;
+}
+
+.code-editor .cm-scroller {
+  font-family:
+    ui-monospace,
+    SFMono-Regular,
+    Menlo,
+    Monaco,
+    Consolas,
+    "Liberation Mono",
+    monospace;
+  line-height: 1.55;
+}
+
+.code-editor .cm-focused {
+  outline: 0;
+}
+
+.code-editor:focus-within {
+  box-shadow: inset 0 0 0 3px rgba(167, 252, 124, 0.42);
+}
+
+.code-editor-readonly .cm-content {
+  cursor: text;
+}
+
+.converter-preview-card {
+  min-height: 260px;
+}
+
+.converter-preview {
+  display: grid;
+  min-height: 210px;
+  place-items: center;
+  padding: 18px;
+  background:
+    linear-gradient(45deg, #f3f6fb 25%, transparent 25%),
+    linear-gradient(-45deg, #f3f6fb 25%, transparent 25%),
+    linear-gradient(45deg, transparent 75%, #f3f6fb 75%),
+    linear-gradient(-45deg, transparent 75%, #f3f6fb 75%);
+  background-color: #fff;
+  background-position:
+    0 0,
+    0 10px,
+    10px -10px,
+    -10px 0;
+  background-size: 20px 20px;
+}
+
+.converter-preview span:not(.converter-placeholder) {
+  display: grid;
+  max-width: 220px;
+  max-height: 220px;
+  place-items: center;
+}
+
+.converter-preview svg {
+  max-width: 220px;
+  max-height: 220px;
+}
+
+.converter-placeholder {
+  color: #667085;
+  font-weight: 700;
+}
+
+.converter-error {
+  margin: 0;
+  border-top: 1px solid #fecaca;
+  padding: 12px 14px;
+  background: #fff1f2;
+  color: #be123c;
+  font-weight: 750;
+}
+
+.converter-output-card {
+  grid-column: 1 / -1;
+}
+
 .unsupported-files,
 .empty-state {
   margin-top: 16px;
@@ -556,6 +819,8 @@ button {
 
   .source-row,
   .tool-row,
+  .converter-toolbar,
+  .converter-layout,
   .viewer-layout {
     grid-template-columns: 1fr;
   }
