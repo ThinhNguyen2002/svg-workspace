@@ -79,9 +79,17 @@ export async function writeCatalogForSourceDir(
     throw error;
   }
 
-  const catalog = await scanIconDirectory(absoluteSourceDir);
-  await writeCatalog(outputPath, catalog);
-  return catalog;
+  try {
+    const catalog = await scanIconDirectory(absoluteSourceDir);
+    await writeCatalog(outputPath, catalog);
+    return catalog;
+  } catch (error) {
+    const detail = error instanceof Error ? error.message : String(error);
+    const message = `Unable to scan icon source: ${detail}`;
+    const catalog = makeSetupErrorCatalog(absoluteSourceDir, message);
+    await writeCatalog(outputPath, catalog);
+    throw new Error(message);
+  }
 }
 
 async function writeCatalog(outputPath: string, catalog: IconCatalog): Promise<void> {

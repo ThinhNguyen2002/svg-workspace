@@ -97,6 +97,8 @@ export function parseIconSource(source: string): ParsedIconResult {
 }
 
 function findExportedComponent(ast: t.File): ComponentCandidate | null {
+  const localComponents = collectLocalComponents(ast);
+
   for (const statement of ast.program.body) {
     if (t.isExportNamedDeclaration(statement) && statement.declaration) {
       const candidate = getNamedExportCandidate(statement.declaration);
@@ -105,15 +107,53 @@ function findExportedComponent(ast: t.File): ComponentCandidate | null {
       }
     }
 
+    if (t.isExportNamedDeclaration(statement) && statement.specifiers.length > 0) {
+      for (const specifier of statement.specifiers) {
+        if (t.isExportSpecifier(specifier) && t.isIdentifier(specifier.local)) {
+          const candidate = localComponents.get(specifier.local.name);
+          if (candidate) {
+            return candidate;
+          }
+        }
+      }
+    }
+
     if (t.isExportDefaultDeclaration(statement)) {
       const declaration = statement.declaration;
       if (t.isFunctionDeclaration(declaration) && declaration.id) {
         return { name: declaration.id.name, body: declaration };
       }
+
+      if (t.isIdentifier(declaration)) {
+        const candidate = localComponents.get(declaration.name);
+        if (candidate) {
+          return candidate;
+        }
+      }
     }
   }
 
   return null;
+}
+
+function collectLocalComponents(ast: t.File): Map<string, ComponentCandidate> {
+  const components = new Map<string, ComponentCandidate>();
+
+  for (const statement of ast.program.body) {
+    if (t.isVariableDeclaration(statement)) {
+      for (const declarator of statement.declarations) {
+        if (t.isIdentifier(declarator.id) && declarator.init) {
+          components.set(declarator.id.name, { name: declarator.id.name, body: declarator.init });
+        }
+      }
+    }
+
+    if (t.isFunctionDeclaration(statement) && statement.id) {
+      components.set(statement.id.name, { name: statement.id.name, body: statement });
+    }
+  }
+
+  return components;
 }
 
 function getNamedExportCandidate(declaration: t.Declaration): ComponentCandidate | null {

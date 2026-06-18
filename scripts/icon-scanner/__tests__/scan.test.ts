@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { scanIconDirectory, writeCatalogForSourceDir } from '../scan';
 
 const fixtureDir = path.resolve('test/fixtures/icons');
@@ -56,5 +56,27 @@ describe('scanIconDirectory', () => {
       errors: []
     });
     expect(written.generatedAt).toEqual(expect.any(String));
+  });
+
+  it('writes setup-error JSON when scanning fails unexpectedly', async () => {
+    const outputPath = path.join(tmpDir, 'read-error-icons.json');
+    const readError = new Error('read failed');
+    const readSpy = vi.spyOn(fs, 'readFile').mockRejectedValueOnce(readError);
+
+    await expect(writeCatalogForSourceDir(fixtureDir, outputPath)).rejects.toThrow(
+      `Unable to scan icon source: ${readError.message}`
+    );
+
+    const written = JSON.parse(await fs.readFile(outputPath, 'utf8'));
+    expect(written).toMatchObject({
+      sourceDir: fixtureDir,
+      status: 'setup-error',
+      setupError: `Unable to scan icon source: ${readError.message}`,
+      icons: [],
+      errors: []
+    });
+    expect(written.generatedAt).toEqual(expect.any(String));
+
+    readSpy.mockRestore();
   });
 });

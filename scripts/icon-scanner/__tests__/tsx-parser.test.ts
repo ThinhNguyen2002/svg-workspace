@@ -42,6 +42,46 @@ describe('parseIconSource', () => {
     }
   });
 
+  it('supports named export specifiers for local icon components', () => {
+    const result = parseIconSource(`
+      import Svg, { Path } from 'react-native-svg';
+
+      const HomeIcon = () => (
+        <Svg viewBox="0 0 24 24">
+          <Path d="M1 1" />
+        </Svg>
+      );
+
+      export { HomeIcon };
+    `);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.icon.name).toBe('HomeIcon');
+      expect(result.icon.svg).toContain('<path d="M1 1"/>');
+    }
+  });
+
+  it('supports default identifier exports for local icon components', () => {
+    const result = parseIconSource(`
+      import Svg, { Path } from 'react-native-svg';
+
+      const HomeIcon = () => (
+        <Svg viewBox="0 0 24 24">
+          <Path d="M1 1" />
+        </Svg>
+      );
+
+      export default HomeIcon;
+    `);
+
+    expect(result.ok).toBe(true);
+    if (result.ok) {
+      expect(result.icon.name).toBe('HomeIcon');
+      expect(result.icon.svg).toContain('<path d="M1 1"/>');
+    }
+  });
+
   it('returns a structured error for unsupported conditional JSX', () => {
     const result = parseIconSource(`
       import Svg, { Path } from 'react-native-svg';
