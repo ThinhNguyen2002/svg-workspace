@@ -109,6 +109,69 @@ describe('parseIconSource', () => {
     });
   });
 
+  it('uses the focused branch for tab icons that require isFocused', () => {
+    const result = parseIconSource(`
+      import * as React from 'react';
+      import Svg, { Path } from 'react-native-svg';
+      import { SIZE_VALUE } from '@src/constants';
+      import { TabBarIconProps } from './type';
+
+      const ProfileIcon: React.FC<TabBarIconProps> = ({
+        width = SIZE_VALUE._24,
+        height = SIZE_VALUE._24,
+        isFocused,
+      }) =>
+        isFocused ? (
+          <Svg width={width} height={height} viewBox="0 0 24 24" fill="none">
+            <Path d="M1 1" fill="#7B50B3" />
+          </Svg>
+        ) : (
+          <Svg width={width} height={height} viewBox="0 0 24 24" fill="none">
+            <Path d="M2 2" fill="#9E9E9E" />
+          </Svg>
+        );
+
+      export default ProfileIcon;
+    `);
+
+    expect(result).toEqual({
+      ok: true,
+      icon: {
+        name: 'ProfileIcon',
+        svg: '<svg width="24" height="24" viewBox="0 0 24 24" fill="none"><path d="M1 1" fill="#7B50B3"/></svg>'
+      }
+    });
+  });
+
+  it('uses preview color for theme onSurfaceVariant default fill props', () => {
+    const result = parseIconSource(`
+      import React, { FC } from 'react';
+      import Svg, { Path } from 'react-native-svg';
+      import { theme } from '@src/themes';
+      import { SIZE_VALUE } from '@src/constants';
+
+      const InvoiceIcon: FC<IconSVGProps> = ({
+        width = SIZE_VALUE._16,
+        height = SIZE_VALUE._16,
+        fill = theme.colors.onSurfaceVariant,
+      }) => (
+        <Svg width={width} height={height} viewBox="0 0 16 16" fill={fill}>
+          <Path d="M1 1" fill="#7B50B3" />
+        </Svg>
+      );
+
+      export default InvoiceIcon;
+    `);
+
+    expect(result).toEqual({
+      ok: true,
+      icon: {
+        name: 'InvoiceIcon',
+        svg: '<svg width="16" height="16" viewBox="0 0 16 16" fill="#7B50B3"><path d="M1 1" fill="#7B50B3"/></svg>'
+      }
+    });
+  });
+
   it('returns a structured error for unsupported conditional JSX', () => {
     const result = parseIconSource(`
       import Svg, { Path } from 'react-native-svg';

@@ -12,6 +12,7 @@ type ComponentCandidate = {
 type RenderedSvg = { ok: true; svg: string } | { ok: false; reason: string };
 type RenderedAttributes = { ok: true; attributes: string[] } | { ok: false; reason: string };
 type RenderedAttributeValue = { ok: true; value: string } | { ok: false; reason: string };
+type ReturnedExpression = t.Expression | t.JSXElement | t.JSXFragment;
 
 const supportedSvgAttributes = new Set([
   'id',
@@ -69,11 +70,12 @@ export function parseIconSource(source: string): ParsedIconResult {
     return { ok: false, reason: 'No exported icon component found' };
   }
 
-  const jsx = findReturnedJsx(candidate.body);
-  if (!jsx) {
+  const returned = findReturnedExpression(candidate.body);
+  if (!returned) {
     return { ok: false, reason: `No JSX return found for ${candidate.name}` };
   }
 
+  const jsx = selectPreviewJsx(returned, candidate.defaultProps);
   if (!t.isJSXElement(jsx)) {
     return { ok: false, reason: `Unsupported JSX return type for ${candidate.name}` };
   }
@@ -185,28 +187,28 @@ function getNamedExportCandidate(declaration: t.Declaration): ComponentCandidate
   return null;
 }
 
-function findReturnedJsx(node: t.Node): t.JSXElement | t.JSXFragment | null {
+function findReturnedExpression(node: t.Node): ReturnedExpression | null {
   if (t.isArrowFunctionExpression(node)) {
-    if (t.isJSXElement(node.body) || t.isJSXFragment(node.body)) {
+    if (t.isExpression(node.body)) {
       return node.body;
     }
 
     if (t.isBlockStatement(node.body)) {
-      return findReturnStatementJsx(node.body);
+      return findReturnStatementExpression(node.body);
     }
   }
 
   if (t.isFunctionDeclaration(node) || t.isFunctionExpression(node)) {
-    return findReturnStatementJsx(node.body);
+    return findReturnStatementExpression(node.body);
   }
 
   return null;
 }
 
-function findReturnStatementJsx(block: t.BlockStatement): t.JSXElement | t.JSXFragment | null {
+function findReturnStatementExpression(block: t.BlockStatement): ReturnedExpression | null {
   for (const statement of block.body) {
     if (t.isReturnStatement(statement) && statement.argument) {
-      if (t.isJSXElement(statement.argument) || t.isJSXFragment(statement.argument)) {
+      if (t.isExpression(statement.argument)) {
         return statement.argument;
       }
     }
@@ -339,18 +341,22 @@ function collectDefaultProps(node: t.Node): Map<string, string> {
   }
 
   for (const property of firstParam.properties) {
-    if (!t.isObjectProperty(property) || !t.isIdentifier(property.key) || !t.isAssignmentPattern(property.value)) {
+    if (!t.isObjectProperty(property) || !t.isIdentifier(property.key)) {
       continue;
     }
 
-    const { left, right } = property.value;
-    if (!t.isIdentifier(left)) {
+    if (t.isIdentifier(property.value) && property.key.name === 'isFocused') {
+      defaults.set(property.value.name, 'true');
       continue;
     }
 
-    const defaultValue = resolvePreviewDefault(right);
+    if (!t.isAssignmentPattern(property.value) || !t.isIdentifier(property.value.left)) {
+      continue;
+    }
+
+    const defaultValue = resolvePreviewDefault(property.value.right);
     if (defaultValue) {
-      defaults.set(left.name, defaultValue);
+      defaults.set(property.value.left.name, defaultValue);
     }
   }
 
@@ -365,6 +371,10 @@ function resolvePreviewDefault(expression: t.Expression): string | null {
   if (t.isMemberExpression(expression)) {
     const property = expression.property;
     if (t.isIdentifier(property)) {
+      if (property.name === 'onSurfaceVariant') {
+        return '#7B50B3';
+      }
+
       const match = /^_(\d+)$/.exec(property.name);
       return match ? match[1] : null;
     }
@@ -375,6 +385,27 @@ function resolvePreviewDefault(expression: t.Expression): string | null {
   }
 
   return null;
+}
+
+function selectPreviewJsx(expression: ReturnedExpression, defaultProps: Map<string, string>): ReturnedExpression {
+  if (!t.isConditionalExpression(expression)) {
+    return expression;
+  }
+
+  const testValue = evaluatePreviewBoolean(expression.test, defaultProps);
+  return testValue ? expression.consequent : expression.alternate;
+}
+
+function evaluatePreviewBoolean(expression: t.Expression, defaultProps: Map<string, string>): boolean {
+  if (t.isBooleanLiteral(expression)) {
+    return expression.value;
+  }
+
+  if (t.isIdentifier(expression)) {
+    return defaultProps.get(expression.name) === 'true';
+  }
+
+  return false;
 }
 
 function getJsxElementName(name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName): string {
