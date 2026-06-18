@@ -82,6 +82,33 @@ describe('parseIconSource', () => {
     }
   });
 
+  it('uses numeric defaults from destructured width and height props', () => {
+    const result = parseIconSource(`
+      import type { FC } from 'react';
+      import Svg, { Circle } from 'react-native-svg';
+      import { SIZE_VALUE } from './sizes';
+
+      const ActiveRadio: FC<IconSVGProps> = ({
+        width = SIZE_VALUE._24,
+        height = SIZE_VALUE._24,
+      }) => (
+        <Svg width={width} height={height} viewBox="0 0 24 24">
+          <Circle cx="12" cy="12" r="10" />
+        </Svg>
+      );
+
+      export { ActiveRadio };
+    `);
+
+    expect(result).toEqual({
+      ok: true,
+      icon: {
+        name: 'ActiveRadio',
+        svg: '<svg width="24" height="24" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg>'
+      }
+    });
+  });
+
   it('returns a structured error for unsupported conditional JSX', () => {
     const result = parseIconSource(`
       import Svg, { Path } from 'react-native-svg';

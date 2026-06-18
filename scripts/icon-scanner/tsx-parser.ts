@@ -6,6 +6,7 @@ import type { ParsedIconResult } from './types';
 type ComponentCandidate = {
   name: string;
   body: t.Node;
+  defaultProps: Map<string, string>;
 };
 
 type RenderedSvg = { ok: true; svg: string } | { ok: false; reason: string };
@@ -82,7 +83,7 @@ export function parseIconSource(source: string): ParsedIconResult {
     return { ok: false, reason: `Root JSX element must be Svg, found ${rootName}` };
   }
 
-  const rendered = renderJsxElement(jsx, 'root');
+  const rendered = renderJsxElement(jsx, 'root', candidate.defaultProps);
   if (!rendered.ok) {
     return { ok: false, reason: rendered.reason };
   }
@@ -121,7 +122,7 @@ function findExportedComponent(ast: t.File): ComponentCandidate | null {
     if (t.isExportDefaultDeclaration(statement)) {
       const declaration = statement.declaration;
       if (t.isFunctionDeclaration(declaration) && declaration.id) {
-        return { name: declaration.id.name, body: declaration };
+        return { name: declaration.id.name, body: declaration, defaultProps: collectDefaultProps(declaration) };
       }
 
       if (t.isIdentifier(declaration)) {
@@ -143,13 +144,21 @@ function collectLocalComponents(ast: t.File): Map<string, ComponentCandidate> {
     if (t.isVariableDeclaration(statement)) {
       for (const declarator of statement.declarations) {
         if (t.isIdentifier(declarator.id) && declarator.init) {
-          components.set(declarator.id.name, { name: declarator.id.name, body: declarator.init });
+          components.set(declarator.id.name, {
+            name: declarator.id.name,
+            body: declarator.init,
+            defaultProps: collectDefaultProps(declarator.init)
+          });
         }
       }
     }
 
     if (t.isFunctionDeclaration(statement) && statement.id) {
-      components.set(statement.id.name, { name: statement.id.name, body: statement });
+      components.set(statement.id.name, {
+        name: statement.id.name,
+        body: statement,
+        defaultProps: collectDefaultProps(statement)
+      });
     }
   }
 
@@ -160,13 +169,17 @@ function getNamedExportCandidate(declaration: t.Declaration): ComponentCandidate
   if (t.isVariableDeclaration(declaration)) {
     for (const declarator of declaration.declarations) {
       if (t.isIdentifier(declarator.id) && declarator.init) {
-        return { name: declarator.id.name, body: declarator.init };
+        return {
+          name: declarator.id.name,
+          body: declarator.init,
+          defaultProps: collectDefaultProps(declarator.init)
+        };
       }
     }
   }
 
   if (t.isFunctionDeclaration(declaration) && declaration.id) {
-    return { name: declaration.id.name, body: declaration };
+    return { name: declaration.id.name, body: declaration, defaultProps: collectDefaultProps(declaration) };
   }
 
   return null;
@@ -202,14 +215,14 @@ function findReturnStatementJsx(block: t.BlockStatement): t.JSXElement | t.JSXFr
   return null;
 }
 
-function renderJsxElement(element: t.JSXElement, context: string): RenderedSvg {
+function renderJsxElement(element: t.JSXElement, context: string, defaultProps: Map<string, string>): RenderedSvg {
   const sourceName = getJsxElementName(element.openingElement.name);
   if (!isSupportedSvgElement(sourceName)) {
     return { ok: false, reason: `Unsupported SVG element ${sourceName}` };
   }
 
   const tagName = convertSvgElementName(sourceName);
-  const attributes = renderAttributes(element.openingElement.attributes);
+  const attributes = renderAttributes(element.openingElement.attributes, defaultProps);
   if (!attributes.ok) {
     return attributes;
   }
@@ -225,7 +238,7 @@ function renderJsxElement(element: t.JSXElement, context: string): RenderedSvg {
     }
 
     if (t.isJSXElement(child)) {
-      const renderedChild = renderJsxElement(child, sourceName);
+      const renderedChild = renderJsxElement(child, sourceName, defaultProps);
       if (!renderedChild.ok) {
         return renderedChild;
       }
@@ -251,7 +264,7 @@ function renderJsxElement(element: t.JSXElement, context: string): RenderedSvg {
   return { ok: true, svg: `<${tagName}${attrs}>${childParts.join('')}</${tagName}>` };
 }
 
-function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[]): RenderedAttributes {
+function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[], defaultProps: Map<string, string>): RenderedAttributes {
   const rendered: string[] = [];
 
   for (const attribute of attributes) {
@@ -265,7 +278,7 @@ function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[])
       return { ok: false, reason: `Unsupported SVG attribute ${name}` };
     }
 
-    const value = renderAttributeValue(name, attribute.value);
+    const value = renderAttributeValue(name, attribute.value, defaultProps);
     if (!value.ok) {
       return value;
     }
@@ -276,7 +289,11 @@ function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[])
   return { ok: true, attributes: rendered };
 }
 
-function renderAttributeValue(name: string, value: t.JSXAttribute['value']): RenderedAttributeValue {
+function renderAttributeValue(
+  name: string,
+  value: t.JSXAttribute['value'],
+  defaultProps: Map<string, string>
+): RenderedAttributeValue {
   if (!value) {
     return { ok: true, value: 'true' };
   }
@@ -300,10 +317,64 @@ function renderAttributeValue(name: string, value: t.JSXAttribute['value']): Ren
       if ((name === 'fill' || name === 'stroke') && expression.name === 'color') {
         return { ok: true, value: 'currentColor' };
       }
+
+      const defaultValue = defaultProps.get(expression.name);
+      if (defaultValue) {
+        return { ok: true, value: defaultValue };
+      }
     }
   }
 
   return { ok: false, reason: `Unsupported dynamic JSX expression in ${name}` };
+}
+
+function collectDefaultProps(node: t.Node): Map<string, string> {
+  const defaults = new Map<string, string>();
+  const params =
+    t.isArrowFunctionExpression(node) || t.isFunctionDeclaration(node) || t.isFunctionExpression(node) ? node.params : [];
+  const firstParam = params[0];
+
+  if (!firstParam || !t.isObjectPattern(firstParam)) {
+    return defaults;
+  }
+
+  for (const property of firstParam.properties) {
+    if (!t.isObjectProperty(property) || !t.isIdentifier(property.key) || !t.isAssignmentPattern(property.value)) {
+      continue;
+    }
+
+    const { left, right } = property.value;
+    if (!t.isIdentifier(left)) {
+      continue;
+    }
+
+    const defaultValue = resolvePreviewDefault(right);
+    if (defaultValue) {
+      defaults.set(left.name, defaultValue);
+    }
+  }
+
+  return defaults;
+}
+
+function resolvePreviewDefault(expression: t.Expression): string | null {
+  if (t.isNumericLiteral(expression) || t.isStringLiteral(expression)) {
+    return String(expression.value);
+  }
+
+  if (t.isMemberExpression(expression)) {
+    const property = expression.property;
+    if (t.isIdentifier(property)) {
+      const match = /^_(\d+)$/.exec(property.name);
+      return match ? match[1] : null;
+    }
+
+    if (t.isNumericLiteral(property)) {
+      return String(property.value);
+    }
+  }
+
+  return null;
 }
 
 function getJsxElementName(name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName): string {
