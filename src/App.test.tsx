@@ -88,6 +88,9 @@ describe('IconViewer', () => {
 
     expect(screen.getByText('No matching icons')).toBeInTheDocument();
     expect(screen.getByText('0 icons')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Selected icon details' })).toHaveTextContent('No icon selected');
+    expect(screen.queryByRole('button', { name: 'Copy component name' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Copy import snippet' })).not.toBeInTheDocument();
   });
 
   it('filters icons by category', async () => {

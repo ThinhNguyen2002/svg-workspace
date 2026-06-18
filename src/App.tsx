@@ -28,8 +28,7 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
     });
   }, [catalog.icons, category, query]);
 
-  const selectedIcon =
-    visibleIcons.find((icon) => icon.name === selectedName) ?? visibleIcons[0] ?? catalog.icons[0] ?? null;
+  const selectedIcon = visibleIcons.find((icon) => icon.name === selectedName) ?? visibleIcons[0] ?? null;
 
   async function copy(value: string, label: string) {
     await navigator.clipboard.writeText(value);
@@ -184,7 +183,11 @@ function DetailPanel({
       <button type="button" onClick={() => onCopy(icon.importSnippet, 'import snippet')}>
         Copy import snippet
       </button>
-      {copied ? <p className="copy-status">Copied {copied}.</p> : null}
+      {copied ? (
+        <p className="copy-status" role="status">
+          Copied {copied}.
+        </p>
+      ) : null}
     </aside>
   );
 }
