@@ -173,17 +173,18 @@ https://your-domain.com/sitemap.xml
 3. Use URL Inspection for the homepage and request indexing.
 4. Share the URL once on public pages or docs so crawlers can discover it naturally.
 
-## Important Production Note
+## Production Folder Scanning
 
-The current folder picker and source scanner API are development-only because they rely on the local Vite dev server and local filesystem access.
+Public deployments use the browser File System Access API when available.
 
 That means:
 
-- Local users can run the project and scan folders on their own machine.
-- A public static deployment can show the generated catalog and use the SVG converter.
-- A public static deployment cannot directly scan arbitrary local folders from every user's machine with the current Node API.
+- Chrome and Edge users can click Choose and scan folders directly in the browser.
+- Local files stay on the user's machine; the app reads them client-side.
+- Browsers without `showDirectoryPicker()` support cannot use production folder scanning yet.
+- The Vite `/api/select-icon-folder` endpoint is only a local development fallback.
 
-To support browser-based scanning for public users, add a future File System Access API flow or a server-side upload flow.
+For unsupported browsers, add a future upload flow or drag-and-drop folder flow.
 
 ## Scripts
 
@@ -200,7 +201,7 @@ npm run dev:watch  # Watch icon source folder and run Vite
 
 - The parser supports common SVG JSX patterns, not arbitrary React rendering logic.
 - Dynamic SVG attributes may be unsupported unless they can be resolved from default props.
-- Folder scanning in the UI is intended for local development mode.
+- Production folder scanning requires a browser with File System Access API support.
 - Large converter chunks may trigger a Vite warning because CodeMirror is bundled into the converter route.
 
 ## License

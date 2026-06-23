@@ -102,6 +102,14 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
   }
 
   async function chooseSourceFolder() {
+    if ("showDirectoryPicker" in window) {
+      const { scanBrowserIconFolder } = await import(
+        "./features/icon-catalog/browserScanner"
+      );
+      await scanFromBrowserFolder(scanBrowserIconFolder);
+      return;
+    }
+
     await scanFromApi("/api/select-icon-folder");
   }
 
@@ -118,6 +126,27 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
     localStorage.setItem(activeSourceKey, sourceDir);
     setActiveSource(sourceDir);
     await scanFromApi("/api/scan-icon-folder", { sourceDir });
+  }
+
+  async function scanFromBrowserFolder(
+    scanBrowserIconFolder: () => Promise<IconCatalog>,
+  ) {
+    setIsScanning(true);
+
+    try {
+      const nextCatalog = await scanBrowserIconFolder();
+      setActiveSource(nextCatalog.sourceDir);
+      setActiveCatalog(nextCatalog);
+      setSelectedFilePath(nextCatalog.icons[0]?.filePath ?? null);
+      setCategory("all");
+      setQuery("");
+      toast.success(`Scanned ${formatIconCount(nextCatalog.icons.length)}.`);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      toast.error(message);
+    } finally {
+      setIsScanning(false);
+    }
   }
 
   function clearSource() {

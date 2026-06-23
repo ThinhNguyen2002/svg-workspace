@@ -22,7 +22,7 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!assets/|robots.txt|sitemap.xml|site.webmanifest|favicon.svg|og-image.svg).*)",
+      "source": "/((?!api/|assets/|robots.txt|sitemap.xml|site.webmanifest|favicon.svg|og-image.svg).*)",
       "destination": "/index.html"
     }
   ]
