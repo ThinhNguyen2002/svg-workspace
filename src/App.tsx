@@ -96,10 +96,6 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
     setActiveSource(storedActiveSource);
 
     if (storedActiveSource) {
-      if (isBrowserSource(storedActiveSource)) {
-        return;
-      }
-
       void scanSource(storedActiveSource);
     }
   }, []);

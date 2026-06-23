@@ -1,14 +1,19 @@
 import { parse } from "@babel/parser";
 import * as t from "@babel/types";
 import type { IconCatalog, IconPropUsage, IconSourceType } from "../../types";
-import { makeBrowserSourceKey } from "../../utils/sourceStorage";
+import {
+  makeBrowserSourceKey,
+  makeUniqueBrowserSourceKey,
+} from "../../utils/sourceStorage";
 
 type BrowserDirectoryHandle = {
   kind: "directory";
   name: string;
   values(): AsyncIterable<BrowserFileSystemHandle>;
   queryPermission?: (descriptor?: { mode: "read" }) => Promise<PermissionState>;
-  requestPermission?: (descriptor?: { mode: "read" }) => Promise<PermissionState>;
+  requestPermission?: (descriptor?: {
+    mode: "read";
+  }) => Promise<PermissionState>;
 };
 
 type BrowserFileHandle = {
@@ -115,7 +120,7 @@ export async function scanBrowserIconFolder(): Promise<IconCatalog> {
   }
 
   const root = await picker();
-  await saveBrowserDirectoryHandle(root);
+  await saveBrowserDirectoryHandle(makeUniqueBrowserSourceKey(root.name), root);
   return scanBrowserDirectoryHandle(root);
 }
 
@@ -126,10 +131,11 @@ export async function chooseBrowserIconFolder() {
   }
 
   const root = await picker();
-  await saveBrowserDirectoryHandle(root);
+  const sourceKey = makeUniqueBrowserSourceKey(root.name);
+  await saveBrowserDirectoryHandle(sourceKey, root);
   return {
     catalog: await scanBrowserDirectoryHandle(root),
-    sourceKey: makeBrowserSourceKey(root.name),
+    sourceKey,
     sourceLabel: root.name,
   };
 }
@@ -148,7 +154,9 @@ export async function scanStoredBrowserIconFolder(sourceKey: string) {
   };
 }
 
-async function scanBrowserDirectoryHandle(root: BrowserDirectoryHandle): Promise<IconCatalog> {
+async function scanBrowserDirectoryHandle(
+  root: BrowserDirectoryHandle,
+): Promise<IconCatalog> {
   const files = await collectSupportedFiles(root);
   const sourceMap = new Map<string, string>();
   for (const item of files) {
@@ -164,7 +172,9 @@ async function scanBrowserDirectoryHandle(root: BrowserDirectoryHandle): Promise
     errors: [],
   };
 
-  for (const item of files.sort((first, second) => first.path.localeCompare(second.path))) {
+  for (const item of files.sort((first, second) =>
+    first.path.localeCompare(second.path),
+  )) {
     const source = sourceMap.get(item.path) ?? "";
     const parsed = item.path.toLowerCase().endsWith(".svg")
       ? parseRawSvgSource(source, item.path)
@@ -185,7 +195,11 @@ async function scanBrowserDirectoryHandle(root: BrowserDirectoryHandle): Promise
       filePath: item.path,
       sourceType: parsed.icon.sourceType,
       svg: parsed.icon.svg,
-      importSnippet: makeImportSnippet(parsed.icon.name, item.path, parsed.icon.sourceType === "svg-file"),
+      importSnippet: makeImportSnippet(
+        parsed.icon.name,
+        item.path,
+        parsed.icon.sourceType === "svg-file",
+      ),
       props: parsed.icon.props,
     });
   }
@@ -197,28 +211,52 @@ async function scanBrowserDirectoryHandle(root: BrowserDirectoryHandle): Promise
   return catalog;
 }
 
-async function saveBrowserDirectoryHandle(handle: BrowserDirectoryHandle) {
+async function saveBrowserDirectoryHandle(
+  sourceKey: string,
+  handle: BrowserDirectoryHandle,
+) {
   const db = await openBrowserSourceDb();
   await idbRequest(
-    db.transaction(browserSourceStoreName, "readwrite")
+    db
+      .transaction(browserSourceStoreName, "readwrite")
       .objectStore(browserSourceStoreName)
-      .put(handle, makeBrowserSourceKey(handle.name)),
+      .put(handle, sourceKey),
   );
   db.close();
 }
 
 async function readBrowserDirectoryHandle(sourceKey: string) {
   const db = await openBrowserSourceDb();
-  const handle = await idbRequest<BrowserDirectoryHandle | undefined>(
-    db.transaction(browserSourceStoreName, "readonly")
+  let handle = await idbRequest<BrowserDirectoryHandle | undefined>(
+    db
+      .transaction(browserSourceStoreName, "readonly")
       .objectStore(browserSourceStoreName)
       .get(sourceKey),
   );
+
+  if (!handle) {
+    const legacyKey = makeBrowserSourceKey(getBrowserSourceLabel(sourceKey));
+    handle = await idbRequest<BrowserDirectoryHandle | undefined>(
+      db
+        .transaction(browserSourceStoreName, "readonly")
+        .objectStore(browserSourceStoreName)
+        .get(legacyKey),
+    );
+  }
+
   db.close();
   return handle ?? null;
 }
 
-async function ensureBrowserDirectoryPermission(handle: BrowserDirectoryHandle) {
+function getBrowserSourceLabel(sourceKey: string) {
+  const rawValue = sourceKey.replace(/^browser:/, "");
+  const separatorIndex = rawValue.indexOf(":");
+  return separatorIndex === -1 ? rawValue : rawValue.slice(separatorIndex + 1);
+}
+
+async function ensureBrowserDirectoryPermission(
+  handle: BrowserDirectoryHandle,
+) {
   const descriptor = { mode: "read" as const };
   const currentPermission = await handle.queryPermission?.(descriptor);
   if (currentPermission === "granted") {
@@ -278,10 +316,15 @@ async function collectSupportedFiles(root: BrowserDirectoryHandle) {
 
 function isSupportedFileName(fileName: string) {
   const normalized = fileName.toLowerCase();
-  return Array.from(supportedRawExtensions).some((extension) => normalized.endsWith(extension));
+  return Array.from(supportedRawExtensions).some((extension) =>
+    normalized.endsWith(extension),
+  );
 }
 
-function parseRawSvgSource(source: string, relativePath: string): ParsedBrowserIcon {
+function parseRawSvgSource(
+  source: string,
+  relativePath: string,
+): ParsedBrowserIcon {
   const svg = source
     .replace(/^\s*<\?xml[\s\S]*?\?>\s*/i, "")
     .replace(/^\s*<!doctype[\s\S]*?>\s*/i, "")
@@ -317,7 +360,10 @@ function parseJsxIconSource(
       plugins: ["typescript", "jsx"],
     });
   } catch (error) {
-    return { ok: false, reason: `Unable to parse source: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      ok: false,
+      reason: `Unable to parse source: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   const localComponents = collectLocalComponents(ast);
@@ -333,7 +379,10 @@ function parseJsxIconSource(
     return { ok: false, reason: "No exported icon component found" };
   }
 
-  const returned = findReturnedExpression(candidate.body, candidate.defaultProps);
+  const returned = findReturnedExpression(
+    candidate.body,
+    candidate.defaultProps,
+  );
   if (!returned) {
     return { ok: false, reason: `No JSX return found for ${candidate.name}` };
   }
@@ -365,14 +414,20 @@ function parseJsxIconSource(
     ok: true,
     icon: {
       name: candidate.name,
-      sourceType: getJsxElementName(root.openingElement.name) === "svg" ? "react" : "react-native",
+      sourceType:
+        getJsxElementName(root.openingElement.name) === "svg"
+          ? "react"
+          : "react-native",
       svg: rendered.svg,
       ...(candidate.props.length > 0 ? { props: candidate.props } : {}),
     },
   };
 }
 
-function findExportedComponent(ast: t.File, localComponents = collectLocalComponents(ast)): ComponentCandidate | null {
+function findExportedComponent(
+  ast: t.File,
+  localComponents = collectLocalComponents(ast),
+): ComponentCandidate | null {
   for (const statement of ast.program.body) {
     if (t.isExportNamedDeclaration(statement) && statement.declaration) {
       const candidate = getNamedExportCandidate(statement.declaration);
@@ -427,20 +482,28 @@ function collectLocalComponents(ast: t.File) {
     if (t.isVariableDeclaration(statement)) {
       for (const declarator of statement.declarations) {
         if (t.isIdentifier(declarator.id) && declarator.init) {
-          components.set(declarator.id.name, buildCandidate(declarator.id.name, declarator.init));
+          components.set(
+            declarator.id.name,
+            buildCandidate(declarator.id.name, declarator.init),
+          );
         }
       }
     }
 
     if (t.isFunctionDeclaration(statement) && statement.id) {
-      components.set(statement.id.name, buildCandidate(statement.id.name, statement));
+      components.set(
+        statement.id.name,
+        buildCandidate(statement.id.name, statement),
+      );
     }
   }
 
   return components;
 }
 
-function getNamedExportCandidate(declaration: t.Declaration): ComponentCandidate | null {
+function getNamedExportCandidate(
+  declaration: t.Declaration,
+): ComponentCandidate | null {
   if (t.isVariableDeclaration(declaration)) {
     for (const declarator of declaration.declarations) {
       if (t.isIdentifier(declarator.id) && declarator.init) {
@@ -465,29 +528,51 @@ function buildCandidate(name: string, body: t.Node): ComponentCandidate {
   };
 }
 
-function renderMappedComponent(candidate: ComponentCandidate, context: ParseContext): { ok: true; svg: string } | { ok: false; reason: string } {
+function renderMappedComponent(
+  candidate: ComponentCandidate,
+  context: ParseContext,
+): { ok: true; svg: string } | { ok: false; reason: string } {
   const mappedComponentName = findFirstMappedComponentName(candidate.body);
   if (!mappedComponentName) {
-    return { ok: false, reason: `Unsupported JSX return type for ${candidate.name}` };
+    return {
+      ok: false,
+      reason: `Unsupported JSX return type for ${candidate.name}`,
+    };
   }
 
   const importPath = findDefaultImportSource(context.ast, mappedComponentName);
   if (!importPath) {
-    return { ok: false, reason: `Unsupported JSX return type for ${candidate.name}` };
+    return {
+      ok: false,
+      reason: `Unsupported JSX return type for ${candidate.name}`,
+    };
   }
 
-  const resolvedPath = resolveImportPath(context.filePath, importPath, context.sourceMap);
+  const resolvedPath = resolveImportPath(
+    context.filePath,
+    importPath,
+    context.sourceMap,
+  );
   if (!resolvedPath) {
-    return { ok: false, reason: `Unable to resolve mapped component ${mappedComponentName}` };
+    return {
+      ok: false,
+      reason: `Unable to resolve mapped component ${mappedComponentName}`,
+    };
   }
 
   if (context.visitedFiles.has(resolvedPath)) {
-    return { ok: false, reason: `Circular mapped component reference ${mappedComponentName}` };
+    return {
+      ok: false,
+      reason: `Circular mapped component reference ${mappedComponentName}`,
+    };
   }
 
   const source = context.sourceMap.get(resolvedPath);
   if (!source) {
-    return { ok: false, reason: `Unable to read mapped component ${mappedComponentName}` };
+    return {
+      ok: false,
+      reason: `Unable to read mapped component ${mappedComponentName}`,
+    };
   }
 
   const parsed = parseJsxIconSource(source, {
@@ -496,11 +581,18 @@ function renderMappedComponent(candidate: ComponentCandidate, context: ParseCont
     visitedFiles: new Set([...context.visitedFiles, resolvedPath]),
   });
 
-  return parsed.ok ? { ok: true, svg: parsed.icon.svg } : { ok: false, reason: parsed.reason };
+  return parsed.ok
+    ? { ok: true, svg: parsed.icon.svg }
+    : { ok: false, reason: parsed.reason };
 }
 
 function findFirstMappedComponentName(node: t.Node): string | null {
-  const body = t.isArrowFunctionExpression(node) || t.isFunctionExpression(node) || t.isFunctionDeclaration(node) ? node.body : null;
+  const body =
+    t.isArrowFunctionExpression(node) ||
+    t.isFunctionExpression(node) ||
+    t.isFunctionDeclaration(node)
+      ? node.body
+      : null;
   if (!body || !t.isBlockStatement(body)) {
     return null;
   }
@@ -511,7 +603,10 @@ function findFirstMappedComponentName(node: t.Node): string | null {
     }
 
     for (const declarator of statement.declarations) {
-      if (!t.isIdentifier(declarator.id) || !t.isObjectExpression(declarator.init)) {
+      if (
+        !t.isIdentifier(declarator.id) ||
+        !t.isObjectExpression(declarator.init)
+      ) {
         continue;
       }
 
@@ -531,14 +626,20 @@ function findFirstMappedComponentName(node: t.Node): string | null {
   return null;
 }
 
-function findDefaultImportSource(ast: t.File, localName: string): string | null {
+function findDefaultImportSource(
+  ast: t.File,
+  localName: string,
+): string | null {
   for (const statement of ast.program.body) {
     if (!t.isImportDeclaration(statement)) {
       continue;
     }
 
     for (const specifier of statement.specifiers) {
-      if (t.isImportDefaultSpecifier(specifier) && specifier.local.name === localName) {
+      if (
+        t.isImportDefaultSpecifier(specifier) &&
+        specifier.local.name === localName
+      ) {
         return statement.source.value;
       }
     }
@@ -547,7 +648,11 @@ function findDefaultImportSource(ast: t.File, localName: string): string | null 
   return null;
 }
 
-function resolveImportPath(fromFilePath: string, importPath: string, sourceMap: Map<string, string>): string | null {
+function resolveImportPath(
+  fromFilePath: string,
+  importPath: string,
+  sourceMap: Map<string, string>,
+): string | null {
   if (!importPath.startsWith(".")) {
     return null;
   }
@@ -584,7 +689,10 @@ function resolveImportPath(fromFilePath: string, importPath: string, sourceMap: 
   return candidates.find((candidate) => sourceMap.has(candidate)) ?? null;
 }
 
-function findReturnedExpression(node: t.Node, defaultProps: Map<string, string>): ReturnedExpression | null {
+function findReturnedExpression(
+  node: t.Node,
+  defaultProps: Map<string, string>,
+): ReturnedExpression | null {
   if (t.isArrowFunctionExpression(node)) {
     if (t.isExpression(node.body) || t.isJSXElement(node.body)) {
       return node.body;
@@ -600,29 +708,47 @@ function findReturnedExpression(node: t.Node, defaultProps: Map<string, string>)
   return null;
 }
 
-function findReturnStatementExpression(block: t.BlockStatement, defaultProps: Map<string, string>): ReturnedExpression | null {
+function findReturnStatementExpression(
+  block: t.BlockStatement,
+  defaultProps: Map<string, string>,
+): ReturnedExpression | null {
   for (const statement of block.body) {
-    if (t.isReturnStatement(statement) && statement.argument && (t.isExpression(statement.argument) || t.isJSXElement(statement.argument))) {
+    if (
+      t.isReturnStatement(statement) &&
+      statement.argument &&
+      (t.isExpression(statement.argument) || t.isJSXElement(statement.argument))
+    ) {
       return statement.argument;
     }
 
     if (t.isIfStatement(statement)) {
-      const knownTest = evaluateKnownPreviewBoolean(statement.test, defaultProps);
+      const knownTest = evaluateKnownPreviewBoolean(
+        statement.test,
+        defaultProps,
+      );
       if (knownTest === true) {
         return findReturnInStatement(statement.consequent, defaultProps);
       }
 
       if (knownTest === false) {
-        return statement.alternate ? findReturnInStatement(statement.alternate, defaultProps) : null;
+        return statement.alternate
+          ? findReturnInStatement(statement.alternate, defaultProps)
+          : null;
       }
 
-      const consequent = findReturnInStatement(statement.consequent, defaultProps);
+      const consequent = findReturnInStatement(
+        statement.consequent,
+        defaultProps,
+      );
       if (consequent) {
         return consequent;
       }
 
       if (statement.alternate) {
-        const alternate = findReturnInStatement(statement.alternate, defaultProps);
+        const alternate = findReturnInStatement(
+          statement.alternate,
+          defaultProps,
+        );
         if (alternate) {
           return alternate;
         }
@@ -633,8 +759,15 @@ function findReturnStatementExpression(block: t.BlockStatement, defaultProps: Ma
   return null;
 }
 
-function findReturnInStatement(statement: t.Statement, defaultProps: Map<string, string>): ReturnedExpression | null {
-  if (t.isReturnStatement(statement) && statement.argument && (t.isExpression(statement.argument) || t.isJSXElement(statement.argument))) {
+function findReturnInStatement(
+  statement: t.Statement,
+  defaultProps: Map<string, string>,
+): ReturnedExpression | null {
+  if (
+    t.isReturnStatement(statement) &&
+    statement.argument &&
+    (t.isExpression(statement.argument) || t.isJSXElement(statement.argument))
+  ) {
     return statement.argument;
   }
 
@@ -649,14 +782,20 @@ function findReturnInStatement(statement: t.Statement, defaultProps: Map<string,
     }
 
     if (knownTest === false) {
-      return statement.alternate ? findReturnInStatement(statement.alternate, defaultProps) : null;
+      return statement.alternate
+        ? findReturnInStatement(statement.alternate, defaultProps)
+        : null;
     }
   }
 
   return null;
 }
 
-function findSvgElement(node: t.Node, defaultProps: Map<string, string>, context: ParseContext): t.JSXElement | null {
+function findSvgElement(
+  node: t.Node,
+  defaultProps: Map<string, string>,
+  context: ParseContext,
+): t.JSXElement | null {
   const selected = selectPreviewJsx(node, defaultProps);
   if (t.isJSXElement(selected)) {
     const name = getJsxElementName(selected.openingElement.name);
@@ -666,7 +805,11 @@ function findSvgElement(node: t.Node, defaultProps: Map<string, string>, context
 
     const inline = resolveComponentElement(selected, defaultProps, context);
     if (inline.ok) {
-      return findSvgElement(inline.expression, inline.defaultProps, inline.context);
+      return findSvgElement(
+        inline.expression,
+        inline.defaultProps,
+        inline.context,
+      );
     }
 
     for (const child of selected.children) {
@@ -677,7 +820,10 @@ function findSvgElement(node: t.Node, defaultProps: Map<string, string>, context
         }
       }
 
-      if (t.isJSXExpressionContainer(child) && !t.isJSXEmptyExpression(child.expression)) {
+      if (
+        t.isJSXExpressionContainer(child) &&
+        !t.isJSXEmptyExpression(child.expression)
+      ) {
         const nested = findSvgElement(child.expression, defaultProps, context);
         if (nested) {
           return nested;
@@ -698,11 +844,22 @@ function findSvgElement(node: t.Node, defaultProps: Map<string, string>, context
   }
 
   if (t.isConditionalExpression(selected)) {
-    return findSvgElement(selected.consequent, defaultProps, context) ?? findSvgElement(selected.alternate, defaultProps, context);
+    return (
+      findSvgElement(selected.consequent, defaultProps, context) ??
+      findSvgElement(selected.alternate, defaultProps, context)
+    );
   }
 
-  if (t.isLogicalExpression(selected) && selected.operator === "&&" && evaluateKnownPreviewBoolean(selected.left, defaultProps) !== false) {
-    if (t.isExpression(selected.right) || t.isJSXElement(selected.right) || t.isJSXFragment(selected.right)) {
+  if (
+    t.isLogicalExpression(selected) &&
+    selected.operator === "&&" &&
+    evaluateKnownPreviewBoolean(selected.left, defaultProps) !== false
+  ) {
+    if (
+      t.isExpression(selected.right) ||
+      t.isJSXElement(selected.right) ||
+      t.isJSXFragment(selected.right)
+    ) {
       return findSvgElement(selected.right, defaultProps, context);
     }
   }
@@ -710,7 +867,10 @@ function findSvgElement(node: t.Node, defaultProps: Map<string, string>, context
   return null;
 }
 
-function selectPreviewJsx(node: t.Node, defaultProps: Map<string, string>): ReturnedExpression {
+function selectPreviewJsx(
+  node: t.Node,
+  defaultProps: Map<string, string>,
+): ReturnedExpression {
   if (t.isConditionalExpression(node)) {
     const testValue = evaluateKnownPreviewBoolean(node.test, defaultProps);
     return testValue === false ? node.alternate : node.consequent;
@@ -724,14 +884,28 @@ function resolveComponentElement(
   parentDefaults: Map<string, string>,
   context: ParseContext,
 ):
-  | { ok: true; expression: ReturnedExpression; defaultProps: Map<string, string>; context: ParseContext }
+  | {
+      ok: true;
+      expression: ReturnedExpression;
+      defaultProps: Map<string, string>;
+      context: ParseContext;
+    }
   | { ok: false; reason: string } {
   const componentName = getJsxElementName(element.openingElement.name);
   const localComponent = context.localComponents.get(componentName);
   if (localComponent) {
-    const defaultProps = mergeElementProps(localComponent.defaultProps, element, parentDefaults);
-    const expression = findReturnedExpression(localComponent.body, defaultProps);
-    return expression ? { ok: true, expression, defaultProps, context } : { ok: false, reason: `No JSX return found for ${componentName}` };
+    const defaultProps = mergeElementProps(
+      localComponent.defaultProps,
+      element,
+      parentDefaults,
+    );
+    const expression = findReturnedExpression(
+      localComponent.body,
+      defaultProps,
+    );
+    return expression
+      ? { ok: true, expression, defaultProps, context }
+      : { ok: false, reason: `No JSX return found for ${componentName}` };
   }
 
   const importPath = findImportSource(context.ast, componentName);
@@ -739,9 +913,16 @@ function resolveComponentElement(
     return { ok: false, reason: `Unsupported SVG element ${componentName}` };
   }
 
-  const resolvedPath = resolveImportPath(context.filePath, importPath, context.sourceMap);
+  const resolvedPath = resolveImportPath(
+    context.filePath,
+    importPath,
+    context.sourceMap,
+  );
   if (!resolvedPath || context.visitedFiles.has(resolvedPath)) {
-    return { ok: false, reason: `Unable to resolve component ${componentName}` };
+    return {
+      ok: false,
+      reason: `Unable to resolve component ${componentName}`,
+    };
   }
 
   const source = context.sourceMap.get(resolvedPath);
@@ -756,13 +937,19 @@ function resolveComponentElement(
       plugins: ["typescript", "jsx"],
     });
   } catch (error) {
-    return { ok: false, reason: `Unable to parse component ${componentName}: ${error instanceof Error ? error.message : String(error)}` };
+    return {
+      ok: false,
+      reason: `Unable to parse component ${componentName}: ${error instanceof Error ? error.message : String(error)}`,
+    };
   }
 
   const localComponents = collectLocalComponents(ast);
   const candidate = findExportedComponent(ast, localComponents);
   if (!candidate) {
-    return { ok: false, reason: `No exported icon component found for ${componentName}` };
+    return {
+      ok: false,
+      reason: `No exported icon component found for ${componentName}`,
+    };
   }
 
   const nestedContext: ParseContext = {
@@ -773,9 +960,15 @@ function resolveComponentElement(
     visitedFiles: new Set([...context.visitedFiles, resolvedPath]),
   };
 
-  const defaultProps = mergeElementProps(candidate.defaultProps, element, parentDefaults);
+  const defaultProps = mergeElementProps(
+    candidate.defaultProps,
+    element,
+    parentDefaults,
+  );
   const expression = findReturnedExpression(candidate.body, defaultProps);
-  return expression ? { ok: true, expression, defaultProps, context: nestedContext } : { ok: false, reason: `No JSX return found for ${componentName}` };
+  return expression
+    ? { ok: true, expression, defaultProps, context: nestedContext }
+    : { ok: false, reason: `No JSX return found for ${componentName}` };
 }
 
 function mergeElementProps(
@@ -808,7 +1001,8 @@ function findImportSource(ast: t.File, localName: string): string | null {
 
     for (const specifier of statement.specifiers) {
       if (
-        (t.isImportDefaultSpecifier(specifier) || t.isImportSpecifier(specifier)) &&
+        (t.isImportDefaultSpecifier(specifier) ||
+          t.isImportSpecifier(specifier)) &&
         specifier.local.name === localName
       ) {
         return statement.source.value;
@@ -819,20 +1013,32 @@ function findImportSource(ast: t.File, localName: string): string | null {
   return null;
 }
 
-function renderJsxElement(element: t.JSXElement, defaultProps: Map<string, string>, context: ParseContext): { ok: true; svg: string } | { ok: false; reason: string } {
+function renderJsxElement(
+  element: t.JSXElement,
+  defaultProps: Map<string, string>,
+  context: ParseContext,
+): { ok: true; svg: string } | { ok: false; reason: string } {
   const sourceName = getJsxElementName(element.openingElement.name);
   const tagName = svgElementMap.get(sourceName) ?? sourceName;
 
   if (!isSupportedSvgElementName(sourceName)) {
     const inline = resolveComponentElement(element, defaultProps, context);
     if (inline.ok) {
-      return renderReturnedExpression(inline.expression, sourceName, inline.defaultProps, inline.context);
+      return renderReturnedExpression(
+        inline.expression,
+        sourceName,
+        inline.defaultProps,
+        inline.context,
+      );
     }
 
     return { ok: false, reason: `Unsupported SVG element ${sourceName}` };
   }
 
-  const renderedAttributes = renderAttributes(element.openingElement.attributes, defaultProps);
+  const renderedAttributes = renderAttributes(
+    element.openingElement.attributes,
+    defaultProps,
+  );
   if (!renderedAttributes.ok) {
     return renderedAttributes;
   }
@@ -861,7 +1067,12 @@ function renderJsxElement(element: t.JSXElement, defaultProps: Map<string, strin
         continue;
       }
 
-      const renderedExpression = renderJsxExpressionChild(child.expression, sourceName, defaultProps, context);
+      const renderedExpression = renderJsxExpressionChild(
+        child.expression,
+        sourceName,
+        defaultProps,
+        context,
+      );
       if (!renderedExpression.ok) {
         return renderedExpression;
       }
@@ -873,12 +1084,18 @@ function renderJsxElement(element: t.JSXElement, defaultProps: Map<string, strin
     }
   }
 
-  const attrs = renderedAttributes.attributes.length > 0 ? ` ${renderedAttributes.attributes.join(" ")}` : "";
+  const attrs =
+    renderedAttributes.attributes.length > 0
+      ? ` ${renderedAttributes.attributes.join(" ")}`
+      : "";
   if (children.length === 0 && tagName !== "svg") {
     return { ok: true, svg: `<${tagName}${attrs}/>` };
   }
 
-  return { ok: true, svg: `<${tagName}${attrs}>${children.join("")}</${tagName}>` };
+  return {
+    ok: true,
+    svg: `<${tagName}${attrs}>${children.join("")}</${tagName}>`,
+  };
 }
 
 function renderReturnedExpression(
@@ -894,11 +1111,19 @@ function renderReturnedExpression(
   }
 
   if (t.isJSXFragment(selected)) {
-    const rendered = renderJsxFragmentChildren(selected, contextName, defaultProps, context);
+    const rendered = renderJsxFragmentChildren(
+      selected,
+      contextName,
+      defaultProps,
+      context,
+    );
     return rendered.ok ? { ok: true, svg: rendered.svg } : rendered;
   }
 
-  return { ok: false, reason: `Unsupported JSX return type for ${contextName}` };
+  return {
+    ok: false,
+    reason: `Unsupported JSX return type for ${contextName}`,
+  };
 }
 
 function renderJsxFragmentChildren(
@@ -927,8 +1152,16 @@ function renderJsxFragmentChildren(
       continue;
     }
 
-    if (t.isJSXExpressionContainer(child) && !t.isJSXEmptyExpression(child.expression)) {
-      const rendered = renderJsxExpressionChild(child.expression, contextName, defaultProps, context);
+    if (
+      t.isJSXExpressionContainer(child) &&
+      !t.isJSXEmptyExpression(child.expression)
+    ) {
+      const rendered = renderJsxExpressionChild(
+        child.expression,
+        contextName,
+        defaultProps,
+        context,
+      );
       if (!rendered.ok) {
         return rendered;
       }
@@ -948,18 +1181,30 @@ function renderJsxExpressionChild(
   context: ParseContext,
 ): { ok: true; svg: string | null } | { ok: false; reason: string } {
   if (t.isLogicalExpression(expression) && expression.operator === "&&") {
-    const knownValue = evaluateKnownPreviewBoolean(expression.left, defaultProps);
+    const knownValue = evaluateKnownPreviewBoolean(
+      expression.left,
+      defaultProps,
+    );
     if (knownValue === false) {
       return { ok: true, svg: null };
     }
 
     if (t.isJSXElement(expression.right)) {
-      const rendered = renderJsxElement(expression.right, defaultProps, context);
+      const rendered = renderJsxElement(
+        expression.right,
+        defaultProps,
+        context,
+      );
       return rendered.ok ? { ok: true, svg: rendered.svg } : rendered;
     }
 
     if (t.isJSXFragment(expression.right)) {
-      const rendered = renderJsxFragmentChildren(expression.right, contextName, defaultProps, context);
+      const rendered = renderJsxFragmentChildren(
+        expression.right,
+        contextName,
+        defaultProps,
+        context,
+      );
       return rendered.ok ? { ok: true, svg: rendered.svg } : rendered;
     }
   }
@@ -972,7 +1217,12 @@ function renderJsxExpressionChild(
     }
 
     if (t.isJSXFragment(selected)) {
-      const rendered = renderJsxFragmentChildren(selected, contextName, defaultProps, context);
+      const rendered = renderJsxFragmentChildren(
+        selected,
+        contextName,
+        defaultProps,
+        context,
+      );
       return rendered.ok ? { ok: true, svg: rendered.svg } : rendered;
     }
   }
@@ -986,13 +1236,22 @@ function renderJsxExpressionChild(
   }
 
   if (t.isIdentifier(expression)) {
-    return { ok: true, svg: escapeText(defaultProps.get(expression.name) ?? "1") };
+    return {
+      ok: true,
+      svg: escapeText(defaultProps.get(expression.name) ?? "1"),
+    };
   }
 
-  return { ok: false, reason: `Unsupported JSX expression container in ${contextName} children` };
+  return {
+    ok: false,
+    reason: `Unsupported JSX expression container in ${contextName} children`,
+  };
 }
 
-function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[], defaultProps: Map<string, string>) {
+function renderAttributes(
+  attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[],
+  defaultProps: Map<string, string>,
+) {
   const rendered: string[] = [];
 
   for (const attribute of attributes) {
@@ -1017,7 +1276,11 @@ function renderAttributes(attributes: (t.JSXAttribute | t.JSXSpreadAttribute)[],
   return { ok: true as const, attributes: rendered };
 }
 
-function renderAttributeValue(name: string, value: t.JSXAttribute["value"], defaultProps: Map<string, string>) {
+function renderAttributeValue(
+  name: string,
+  value: t.JSXAttribute["value"],
+  defaultProps: Map<string, string>,
+) {
   if (!value) {
     return { ok: true as const, value: "true" };
   }
@@ -1026,8 +1289,14 @@ function renderAttributeValue(name: string, value: t.JSXAttribute["value"], defa
     return { ok: true as const, value: value.value };
   }
 
-  if (!t.isJSXExpressionContainer(value) || t.isJSXEmptyExpression(value.expression)) {
-    return { ok: false as const, reason: `Unsupported dynamic JSX expression in ${name}` };
+  if (
+    !t.isJSXExpressionContainer(value) ||
+    t.isJSXEmptyExpression(value.expression)
+  ) {
+    return {
+      ok: false as const,
+      reason: `Unsupported dynamic JSX expression in ${name}`,
+    };
   }
 
   const expression = value.expression;
@@ -1035,12 +1304,19 @@ function renderAttributeValue(name: string, value: t.JSXAttribute["value"], defa
     return renderStyleValue(expression);
   }
 
-  const expressionValue = renderExpressionAttributeValue(name, expression, defaultProps);
+  const expressionValue = renderExpressionAttributeValue(
+    name,
+    expression,
+    defaultProps,
+  );
   if (expressionValue !== null) {
     return { ok: true as const, value: expressionValue };
   }
 
-  return { ok: false as const, reason: `Unsupported dynamic JSX expression in ${name}` };
+  return {
+    ok: false as const,
+    reason: `Unsupported dynamic JSX expression in ${name}`,
+  };
 }
 
 function renderExpressionAttributeValue(
@@ -1048,16 +1324,27 @@ function renderExpressionAttributeValue(
   expression: t.Expression,
   defaultProps: Map<string, string>,
 ): string | null {
-  if (t.isNumericLiteral(expression) || t.isStringLiteral(expression) || t.isBooleanLiteral(expression)) {
+  if (
+    t.isNumericLiteral(expression) ||
+    t.isStringLiteral(expression) ||
+    t.isBooleanLiteral(expression)
+  ) {
     return String(expression.value);
   }
 
-  if (t.isUnaryExpression(expression) && expression.operator === "-" && t.isNumericLiteral(expression.argument)) {
+  if (
+    t.isUnaryExpression(expression) &&
+    expression.operator === "-" &&
+    t.isNumericLiteral(expression.argument)
+  ) {
     return String(-expression.argument.value);
   }
 
   if (t.isConditionalExpression(expression)) {
-    const testValue = evaluateKnownPreviewBoolean(expression.test, defaultProps);
+    const testValue = evaluateKnownPreviewBoolean(
+      expression.test,
+      defaultProps,
+    );
     return renderExpressionAttributeValue(
       name,
       testValue === false ? expression.alternate : expression.consequent,
@@ -1107,17 +1394,26 @@ function renderStyleValue(expression: t.ObjectExpression) {
 
   for (const property of expression.properties) {
     if (!t.isObjectProperty(property)) {
-      return { ok: false as const, reason: "Unsupported dynamic JSX expression in style" };
+      return {
+        ok: false as const,
+        reason: "Unsupported dynamic JSX expression in style",
+      };
     }
 
     const key = getStylePropertyName(property.key);
     if (!key) {
-      return { ok: false as const, reason: "Unsupported dynamic JSX expression in style" };
+      return {
+        ok: false as const,
+        reason: "Unsupported dynamic JSX expression in style",
+      };
     }
 
     const value = property.value;
     if (!t.isStringLiteral(value) && !t.isNumericLiteral(value)) {
-      return { ok: false as const, reason: "Unsupported dynamic JSX expression in style" };
+      return {
+        ok: false as const,
+        reason: "Unsupported dynamic JSX expression in style",
+      };
     }
 
     declarations.push(`${toKebabCase(key)}:${String(value.value)}`);
@@ -1144,7 +1440,12 @@ function toKebabCase(value: string) {
 
 function collectDefaultProps(node: t.Node) {
   const defaults = new Map<string, string>();
-  const params = t.isArrowFunctionExpression(node) || t.isFunctionDeclaration(node) || t.isFunctionExpression(node) ? node.params : [];
+  const params =
+    t.isArrowFunctionExpression(node) ||
+    t.isFunctionDeclaration(node) ||
+    t.isFunctionExpression(node)
+      ? node.params
+      : [];
   const firstParam = params[0];
 
   if (!firstParam || !t.isObjectPattern(firstParam)) {
@@ -1161,11 +1462,17 @@ function collectDefaultProps(node: t.Node) {
       continue;
     }
 
-    if (!t.isAssignmentPattern(property.value) || !t.isIdentifier(property.value.left)) {
+    if (
+      !t.isAssignmentPattern(property.value) ||
+      !t.isIdentifier(property.value.left)
+    ) {
       continue;
     }
 
-    const defaultValue = property.value.left.name === "fill" ? "#7B50B3" : resolvePreviewDefault(property.value.right);
+    const defaultValue =
+      property.value.left.name === "fill"
+        ? "#7B50B3"
+        : resolvePreviewDefault(property.value.right);
     if (defaultValue) {
       defaults.set(property.value.left.name, defaultValue);
     }
@@ -1175,7 +1482,12 @@ function collectDefaultProps(node: t.Node) {
 }
 
 function collectPropUsage(node: t.Node): IconPropUsage[] {
-  const params = t.isArrowFunctionExpression(node) || t.isFunctionDeclaration(node) || t.isFunctionExpression(node) ? node.params : [];
+  const params =
+    t.isArrowFunctionExpression(node) ||
+    t.isFunctionDeclaration(node) ||
+    t.isFunctionExpression(node)
+      ? node.params
+      : [];
   const firstParam = params[0];
 
   if (!firstParam || !t.isObjectPattern(firstParam)) {
@@ -1189,14 +1501,22 @@ function collectPropUsage(node: t.Node): IconPropUsage[] {
 
     const name = property.key.name;
     if (t.isIdentifier(property.value)) {
-      return [{ name, value: name.startsWith("is") ? null : "{/* value */}", shorthand: name.startsWith("is") }];
+      return [
+        {
+          name,
+          value: name.startsWith("is") ? null : "{/* value */}",
+          shorthand: name.startsWith("is"),
+        },
+      ];
     }
 
     if (!t.isAssignmentPattern(property.value)) {
       return [];
     }
 
-    return [{ name, value: renderUsageValue(property.value.right), shorthand: false }];
+    return [
+      { name, value: renderUsageValue(property.value.right), shorthand: false },
+    ];
   });
 }
 
@@ -1232,7 +1552,9 @@ function renderMemberSide(node: t.Expression | t.PrivateName): string | null {
   return null;
 }
 
-function resolvePreviewDefault(expression: t.Expression | t.PrivateName): string | null {
+function resolvePreviewDefault(
+  expression: t.Expression | t.PrivateName,
+): string | null {
   if (t.isBooleanLiteral(expression)) {
     return String(expression.value);
   }
@@ -1256,12 +1578,19 @@ function resolvePreviewDefault(expression: t.Expression | t.PrivateName): string
   return null;
 }
 
-function evaluateNumericExpression(expression: t.Expression, defaultProps: Map<string, string>): number | null {
+function evaluateNumericExpression(
+  expression: t.Expression,
+  defaultProps: Map<string, string>,
+): number | null {
   if (t.isNumericLiteral(expression)) {
     return expression.value;
   }
 
-  if (t.isUnaryExpression(expression) && expression.operator === "-" && t.isNumericLiteral(expression.argument)) {
+  if (
+    t.isUnaryExpression(expression) &&
+    expression.operator === "-" &&
+    t.isNumericLiteral(expression.argument)
+  ) {
     return -expression.argument.value;
   }
 
@@ -1275,7 +1604,11 @@ function evaluateNumericExpression(expression: t.Expression, defaultProps: Map<s
     return Number.isFinite(numericValue) ? numericValue : null;
   }
 
-  if (!t.isBinaryExpression(expression) || !t.isExpression(expression.left) || !t.isExpression(expression.right)) {
+  if (
+    !t.isBinaryExpression(expression) ||
+    !t.isExpression(expression.left) ||
+    !t.isExpression(expression.right)
+  ) {
     return null;
   }
 
@@ -1299,16 +1632,25 @@ function evaluateNumericExpression(expression: t.Expression, defaultProps: Map<s
   }
 }
 
-function renderTemplateLiteral(expression: t.TemplateLiteral, defaultProps: Map<string, string>): string | null {
+function renderTemplateLiteral(
+  expression: t.TemplateLiteral,
+  defaultProps: Map<string, string>,
+): string | null {
   let value = "";
   for (let index = 0; index < expression.quasis.length; index += 1) {
-    value += expression.quasis[index].value.cooked ?? expression.quasis[index].value.raw;
+    value +=
+      expression.quasis[index].value.cooked ??
+      expression.quasis[index].value.raw;
     const dynamicExpression = expression.expressions[index];
     if (!dynamicExpression || !t.isExpression(dynamicExpression)) {
       continue;
     }
 
-    const rendered = renderExpressionAttributeValue("template", dynamicExpression, defaultProps);
+    const rendered = renderExpressionAttributeValue(
+      "template",
+      dynamicExpression,
+      defaultProps,
+    );
     if (rendered === null) {
       return null;
     }
@@ -1318,13 +1660,19 @@ function renderTemplateLiteral(expression: t.TemplateLiteral, defaultProps: Map<
   return value;
 }
 
-function evaluateKnownPreviewBoolean(expression: t.Expression, defaultProps: Map<string, string>): boolean | null {
+function evaluateKnownPreviewBoolean(
+  expression: t.Expression,
+  defaultProps: Map<string, string>,
+): boolean | null {
   if (t.isBooleanLiteral(expression)) {
     return expression.value;
   }
 
   if (t.isUnaryExpression(expression) && expression.operator === "!") {
-    const value = evaluateKnownPreviewBoolean(expression.argument, defaultProps);
+    const value = evaluateKnownPreviewBoolean(
+      expression.argument,
+      defaultProps,
+    );
     return value === null ? null : !value;
   }
 
@@ -1333,7 +1681,10 @@ function evaluateKnownPreviewBoolean(expression: t.Expression, defaultProps: Map
     return value ? value === "true" : null;
   }
 
-  if (t.isBinaryExpression(expression) && (expression.operator === "===" || expression.operator === "!==")) {
+  if (
+    t.isBinaryExpression(expression) &&
+    (expression.operator === "===" || expression.operator === "!==")
+  ) {
     const left = getPreviewScalar(expression.left, defaultProps);
     const right = getPreviewScalar(expression.right, defaultProps);
     if (left === null || right === null) {
@@ -1346,7 +1697,10 @@ function evaluateKnownPreviewBoolean(expression: t.Expression, defaultProps: Map
   return null;
 }
 
-function getPreviewScalar(expression: t.Expression | t.PrivateName, defaultProps: Map<string, string>): string | null {
+function getPreviewScalar(
+  expression: t.Expression | t.PrivateName,
+  defaultProps: Map<string, string>,
+): string | null {
   if (t.isBooleanLiteral(expression)) {
     return String(expression.value);
   }
@@ -1355,7 +1709,11 @@ function getPreviewScalar(expression: t.Expression | t.PrivateName, defaultProps
     return String(expression.value);
   }
 
-  if (t.isUnaryExpression(expression) && expression.operator === "-" && t.isNumericLiteral(expression.argument)) {
+  if (
+    t.isUnaryExpression(expression) &&
+    expression.operator === "-" &&
+    t.isNumericLiteral(expression.argument)
+  ) {
     return String(-expression.argument.value);
   }
 
@@ -1379,10 +1737,16 @@ function getPreviewScalar(expression: t.Expression | t.PrivateName, defaultProps
 }
 
 function isSupportedSvgElementName(name: string) {
-  return name === "svg" || svgElementMap.has(name) || Array.from(svgElementMap.values()).includes(name);
+  return (
+    name === "svg" ||
+    svgElementMap.has(name) ||
+    Array.from(svgElementMap.values()).includes(name)
+  );
 }
 
-function getJsxElementName(name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName) {
+function getJsxElementName(
+  name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName,
+) {
   return t.isJSXIdentifier(name) ? name.name : "unsupported";
 }
 
@@ -1399,7 +1763,11 @@ function deriveCategory(relativePath: string) {
   return segments.length > 1 ? segments[0] : "uncategorized";
 }
 
-function makeImportSnippet(componentName: string, relativePath: string, importAsAsset: boolean) {
+function makeImportSnippet(
+  componentName: string,
+  relativePath: string,
+  importAsAsset: boolean,
+) {
   if (importAsAsset) {
     return `import ${componentName} from '@/icons/${relativePath}';`;
   }
@@ -1424,9 +1792,16 @@ function makeComponentNameFromPath(relativePath: string) {
 }
 
 function escapeAttribute(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function escapeText(value: string) {
-  return value.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }

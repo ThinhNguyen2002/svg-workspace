@@ -52,6 +52,13 @@ export function makeBrowserSourceKey(label: string) {
   return `${browserSourcePrefix}${label}`;
 }
 
+export function makeUniqueBrowserSourceKey(label: string) {
+  const id = typeof crypto !== "undefined" && "randomUUID" in crypto
+    ? crypto.randomUUID()
+    : `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  return `${browserSourcePrefix}${id}:${label}`;
+}
+
 export function isBrowserSource(source: string | null | undefined) {
   return Boolean(source?.startsWith(browserSourcePrefix));
 }
@@ -61,7 +68,17 @@ export function isLikelyServerSource(source: string) {
 }
 
 export function formatStoredSourceLabel(source: string) {
-  return isBrowserSource(source)
-    ? `${source.slice(browserSourcePrefix.length)} (browser)`
-    : source;
+  if (!isBrowserSource(source)) {
+    return source;
+  }
+
+  const rawValue = source.slice(browserSourcePrefix.length);
+  const separatorIndex = rawValue.indexOf(":");
+  if (separatorIndex === -1) {
+    return `${rawValue} (browser)`;
+  }
+
+  const id = rawValue.slice(0, separatorIndex);
+  const label = rawValue.slice(separatorIndex + 1);
+  return `${label} (${id.slice(0, 6)})`;
 }
