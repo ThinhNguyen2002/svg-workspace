@@ -12,9 +12,13 @@ import type { IconCatalog } from "./types";
 import { formatIconCount } from "./utils/format";
 import {
   activeSourceKey,
+  isBrowserSource,
+  isLikelyServerSource,
+  makeBrowserSourceKey,
   readApiResponse,
   readStoredSources,
   rememberSource,
+  writeStoredSources,
 } from "./utils/sourceStorage";
 
 const iconCatalog = catalog as IconCatalog;
@@ -76,13 +80,26 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
     null;
 
   useEffect(() => {
-    const storedSources = readStoredSources();
-    const storedActiveSource = localStorage.getItem(activeSourceKey);
+    const canUseBrowserSources = "showDirectoryPicker" in window;
+    const storedSources = normalizeStoredSources(readStoredSources(), canUseBrowserSources);
+    const storedActiveSource = normalizeStoredSource(
+      localStorage.getItem(activeSourceKey),
+      canUseBrowserSources,
+    );
+
+    writeStoredSources(storedSources);
+    if (storedActiveSource) {
+      localStorage.setItem(activeSourceKey, storedActiveSource);
+    }
 
     setRecentSources(storedSources);
     setActiveSource(storedActiveSource);
 
     if (storedActiveSource) {
+      if (isBrowserSource(storedActiveSource)) {
+        return;
+      }
+
       void scanSource(storedActiveSource);
     }
   }, []);
@@ -103,10 +120,10 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
 
   async function chooseSourceFolder() {
     if ("showDirectoryPicker" in window) {
-      const { scanBrowserIconFolder } = await import(
+      const { chooseBrowserIconFolder } = await import(
         "./features/icon-catalog/browserScanner"
       );
-      await scanFromBrowserFolder(scanBrowserIconFolder);
+      await scanFromBrowserFolder(chooseBrowserIconFolder);
       return;
     }
 
@@ -123,27 +140,39 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
   }
 
   async function scanSource(sourceDir: string) {
+    if (shouldScanAsBrowserSource(sourceDir)) {
+      const { scanStoredBrowserIconFolder } = await import(
+        "./features/icon-catalog/browserScanner"
+      );
+      const browserSourceKey = toBrowserSourceKey(sourceDir);
+      await scanFromBrowserFolder(() => scanStoredBrowserIconFolder(browserSourceKey));
+      return;
+    }
+
     localStorage.setItem(activeSourceKey, sourceDir);
     setActiveSource(sourceDir);
     await scanFromApi("/api/scan-icon-folder", { sourceDir });
   }
 
   async function scanFromBrowserFolder(
-    scanBrowserIconFolder: () => Promise<IconCatalog>,
+    scanBrowserIconFolder: () => Promise<{
+      catalog: IconCatalog;
+      sourceKey: string;
+      sourceLabel: string;
+    }>,
   ) {
     setIsScanning(true);
 
     try {
-      const nextCatalog = await scanBrowserIconFolder();
-      const sourceDir = nextCatalog.sourceDir ?? "Browser folder";
-      const nextSources = rememberSource(sourceDir);
+      const { catalog: nextCatalog, sourceKey } = await scanBrowserIconFolder();
+      const nextSources = rememberSource(sourceKey);
       setRecentSources(nextSources);
-      setActiveSource(sourceDir);
+      setActiveSource(sourceKey);
       setActiveCatalog(nextCatalog);
       setSelectedFilePath(nextCatalog.icons[0]?.filePath ?? null);
       setCategory("all");
       setQuery("");
-      localStorage.setItem(activeSourceKey, sourceDir);
+      localStorage.setItem(activeSourceKey, sourceKey);
       toast.success(`Scanned ${formatIconCount(nextCatalog.icons.length)}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
@@ -261,6 +290,32 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
       />
     </main>
   );
+}
+
+function normalizeStoredSources(sources: string[], canUseBrowserSources: boolean) {
+  return sources
+    .map((source) => normalizeStoredSource(source, canUseBrowserSources))
+    .filter((source): source is string => Boolean(source));
+}
+
+function normalizeStoredSource(source: string | null, canUseBrowserSources: boolean) {
+  if (!source) {
+    return null;
+  }
+
+  if (!canUseBrowserSources || isBrowserSource(source) || isLikelyServerSource(source)) {
+    return source;
+  }
+
+  return makeBrowserSourceKey(source);
+}
+
+function shouldScanAsBrowserSource(source: string) {
+  return isBrowserSource(source) || ("showDirectoryPicker" in window && !isLikelyServerSource(source));
+}
+
+function toBrowserSourceKey(source: string) {
+  return isBrowserSource(source) ? source : makeBrowserSourceKey(source);
 }
 
 function getTabFromPath(pathname: string): AppTab {

@@ -1,3 +1,5 @@
+import { formatStoredSourceLabel } from "../../utils/sourceStorage";
+
 export function SourceControls({
   activeSource,
   isScanning,
@@ -43,7 +45,7 @@ export function SourceControls({
           <option value="">Generated catalog</option>
           {recentSources.map((source) => (
             <option key={source} value={source}>
-              {source}
+              {formatStoredSourceLabel(source)}
             </option>
           ))}
         </select>

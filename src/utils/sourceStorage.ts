@@ -2,6 +2,7 @@ import type { IconCatalog } from "../types";
 
 const recentSourcesKey = "icon-view:recent-sources";
 export const activeSourceKey = "icon-view:active-source";
+export const browserSourcePrefix = "browser:";
 
 export async function readApiResponse(
   response: Response,
@@ -34,6 +35,10 @@ export function readStoredSources() {
   }
 }
 
+export function writeStoredSources(sources: string[]) {
+  localStorage.setItem(recentSourcesKey, JSON.stringify(sources));
+}
+
 export function rememberSource(sourceDir: string) {
   const nextSources = [
     sourceDir,
@@ -41,4 +46,22 @@ export function rememberSource(sourceDir: string) {
   ].slice(0, 8);
   localStorage.setItem(recentSourcesKey, JSON.stringify(nextSources));
   return nextSources;
+}
+
+export function makeBrowserSourceKey(label: string) {
+  return `${browserSourcePrefix}${label}`;
+}
+
+export function isBrowserSource(source: string | null | undefined) {
+  return Boolean(source?.startsWith(browserSourcePrefix));
+}
+
+export function isLikelyServerSource(source: string) {
+  return source.startsWith("/") || /^[a-zA-Z]:[\\/]/.test(source);
+}
+
+export function formatStoredSourceLabel(source: string) {
+  return isBrowserSource(source)
+    ? `${source.slice(browserSourcePrefix.length)} (browser)`
+    : source;
 }

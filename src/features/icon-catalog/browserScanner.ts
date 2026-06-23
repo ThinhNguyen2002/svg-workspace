@@ -1,11 +1,14 @@
 import { parse } from "@babel/parser";
 import * as t from "@babel/types";
 import type { IconCatalog, IconPropUsage, IconSourceType } from "../../types";
+import { makeBrowserSourceKey } from "../../utils/sourceStorage";
 
 type BrowserDirectoryHandle = {
   kind: "directory";
   name: string;
   values(): AsyncIterable<BrowserFileSystemHandle>;
+  queryPermission?: (descriptor?: { mode: "read" }) => Promise<PermissionState>;
+  requestPermission?: (descriptor?: { mode: "read" }) => Promise<PermissionState>;
 };
 
 type BrowserFileHandle = {
@@ -98,6 +101,8 @@ const svgAttributeMap = new Map<string, string>([
 
 const ignoredAttributes = new Set(["testID", "key"]);
 const supportedRawExtensions = new Set([".tsx", ".jsx", ".svg"]);
+const browserSourceDbName = "svg-workspace-browser-sources";
+const browserSourceStoreName = "folders";
 
 export function canUseBrowserFolderPicker() {
   return typeof (window as BrowserWindow).showDirectoryPicker === "function";
@@ -110,6 +115,40 @@ export async function scanBrowserIconFolder(): Promise<IconCatalog> {
   }
 
   const root = await picker();
+  await saveBrowserDirectoryHandle(root);
+  return scanBrowserDirectoryHandle(root);
+}
+
+export async function chooseBrowserIconFolder() {
+  const picker = (window as BrowserWindow).showDirectoryPicker;
+  if (!picker) {
+    throw new Error("Folder scanning is not supported in this browser.");
+  }
+
+  const root = await picker();
+  await saveBrowserDirectoryHandle(root);
+  return {
+    catalog: await scanBrowserDirectoryHandle(root),
+    sourceKey: makeBrowserSourceKey(root.name),
+    sourceLabel: root.name,
+  };
+}
+
+export async function scanStoredBrowserIconFolder(sourceKey: string) {
+  const root = await readBrowserDirectoryHandle(sourceKey);
+  if (!root) {
+    throw new Error("Choose this folder again to restore browser permission.");
+  }
+
+  await ensureBrowserDirectoryPermission(root);
+  return {
+    catalog: await scanBrowserDirectoryHandle(root),
+    sourceKey,
+    sourceLabel: root.name,
+  };
+}
+
+async function scanBrowserDirectoryHandle(root: BrowserDirectoryHandle): Promise<IconCatalog> {
   const files = await collectSupportedFiles(root);
   const sourceMap = new Map<string, string>();
   for (const item of files) {
@@ -156,6 +195,60 @@ export async function scanBrowserIconFolder(): Promise<IconCatalog> {
   ) as IconSourceType[];
 
   return catalog;
+}
+
+async function saveBrowserDirectoryHandle(handle: BrowserDirectoryHandle) {
+  const db = await openBrowserSourceDb();
+  await idbRequest(
+    db.transaction(browserSourceStoreName, "readwrite")
+      .objectStore(browserSourceStoreName)
+      .put(handle, makeBrowserSourceKey(handle.name)),
+  );
+  db.close();
+}
+
+async function readBrowserDirectoryHandle(sourceKey: string) {
+  const db = await openBrowserSourceDb();
+  const handle = await idbRequest<BrowserDirectoryHandle | undefined>(
+    db.transaction(browserSourceStoreName, "readonly")
+      .objectStore(browserSourceStoreName)
+      .get(sourceKey),
+  );
+  db.close();
+  return handle ?? null;
+}
+
+async function ensureBrowserDirectoryPermission(handle: BrowserDirectoryHandle) {
+  const descriptor = { mode: "read" as const };
+  const currentPermission = await handle.queryPermission?.(descriptor);
+  if (currentPermission === "granted") {
+    return;
+  }
+
+  const nextPermission = await handle.requestPermission?.(descriptor);
+  if (nextPermission && nextPermission !== "granted") {
+    throw new Error("Folder permission was not granted.");
+  }
+}
+
+function openBrowserSourceDb() {
+  return new Promise<IDBDatabase>((resolve, reject) => {
+    const request = indexedDB.open(browserSourceDbName, 1);
+
+    request.onupgradeneeded = () => {
+      request.result.createObjectStore(browserSourceStoreName);
+    };
+
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
+}
+
+function idbRequest<T = unknown>(request: IDBRequest<T>) {
+  return new Promise<T>((resolve, reject) => {
+    request.onsuccess = () => resolve(request.result);
+    request.onerror = () => reject(request.error);
+  });
 }
 
 async function collectSupportedFiles(root: BrowserDirectoryHandle) {
@@ -309,6 +402,16 @@ function findExportedComponent(ast: t.File, localComponents = collectLocalCompon
         const candidate = localComponents.get(declaration.name);
         if (candidate) {
           return candidate;
+        }
+      }
+
+      if (t.isCallExpression(declaration)) {
+        const firstArg = declaration.arguments[0];
+        if (t.isIdentifier(firstArg)) {
+          const candidate = localComponents.get(firstArg.name);
+          if (candidate) {
+            return candidate;
+          }
         }
       }
     }
