@@ -135,11 +135,15 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
 
     try {
       const nextCatalog = await scanBrowserIconFolder();
-      setActiveSource(nextCatalog.sourceDir);
+      const sourceDir = nextCatalog.sourceDir ?? "Browser folder";
+      const nextSources = rememberSource(sourceDir);
+      setRecentSources(nextSources);
+      setActiveSource(sourceDir);
       setActiveCatalog(nextCatalog);
       setSelectedFilePath(nextCatalog.icons[0]?.filePath ?? null);
       setCategory("all");
       setQuery("");
+      localStorage.setItem(activeSourceKey, sourceDir);
       toast.success(`Scanned ${formatIconCount(nextCatalog.icons.length)}.`);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
