@@ -171,6 +171,10 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
       localStorage.setItem(activeSourceKey, sourceKey);
       toast.success(`Scanned ${formatIconCount(nextCatalog.icons.length)}.`);
     } catch (error) {
+      if (isFolderPickerAbortError(error)) {
+        return;
+      }
+
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message);
     } finally {
@@ -312,6 +316,13 @@ function shouldScanAsBrowserSource(source: string) {
 
 function toBrowserSourceKey(source: string) {
   return isBrowserSource(source) ? source : makeBrowserSourceKey(source);
+}
+
+function isFolderPickerAbortError(error: unknown) {
+  return (
+    error instanceof DOMException &&
+    (error.name === "AbortError" || error.name === "NotAllowedError")
+  );
 }
 
 function getTabFromPath(pathname: string): AppTab {
