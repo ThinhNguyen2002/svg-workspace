@@ -52,7 +52,7 @@ const setupErrorCatalog: IconCatalog = {
   sourceDir: null,
   generatedAt: null,
   status: 'setup-error',
-  setupError: 'Run npm run scan:icons after setting RN_ICON_SOURCE_DIR in .env.',
+  setupError: 'Choose an SVG source folder to scan React Native, React, or raw SVG icons.',
   icons: [],
   errors: []
 };

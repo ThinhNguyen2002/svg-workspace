@@ -1,28 +1,50 @@
-export type AppTab = "catalog" | "converter";
+export type AppTab = "catalog" | "converter" | "guide";
+
+export const appRoutes: Record<AppTab, string> = {
+  catalog: "/",
+  converter: "/converter",
+  guide: "/guide",
+};
 
 export function AppTabs({
   activeTab,
-  onChange,
+  onNavigate,
 }: {
   activeTab: AppTab;
-  onChange: (tab: AppTab) => void;
+  onNavigate: (tab: AppTab) => void;
 }) {
   return (
     <nav className="app-tabs" aria-label="Main views">
-      <button
+      <a
         className={activeTab === "catalog" ? "active" : undefined}
-        type="button"
-        onClick={() => onChange("catalog")}
+        href={appRoutes.catalog}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigate("catalog");
+        }}
       >
         Icon catalog
-      </button>
-      <button
+      </a>
+      <a
         className={activeTab === "converter" ? "active" : undefined}
-        type="button"
-        onClick={() => onChange("converter")}
+        href={appRoutes.converter}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigate("converter");
+        }}
       >
-        SVG to RN JSX
-      </button>
+        SVG converter
+      </a>
+      <a
+        className={activeTab === "guide" ? "active" : undefined}
+        href={appRoutes.guide}
+        onClick={(event) => {
+          event.preventDefault();
+          onNavigate("guide");
+        }}
+      >
+        Guide
+      </a>
     </nav>
   );
 }

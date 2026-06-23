@@ -1,11 +1,12 @@
-import { useEffect, useMemo, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { ToastContainer, toast } from "react-toastify";
+// @ts-ignore
 import "react-toastify/dist/ReactToastify.css";
 import { AppHeader } from "./components/AppHeader";
-import { AppTabs, type AppTab } from "./components/AppTabs";
+import { AppTabs, appRoutes, type AppTab } from "./components/AppTabs";
 import { SetupError } from "./components/SetupError";
 import { IconCatalogView } from "./features/icon-catalog/IconCatalogView";
-import { SvgToReactNativeConverter } from "./features/svg-converter/SvgToReactNativeConverter";
+import { SourceControls } from "./features/icon-catalog/SourceControls";
 import catalog from "./generated/icons.json";
 import type { IconCatalog } from "./types";
 import { formatIconCount } from "./utils/format";
@@ -17,13 +18,27 @@ import {
 } from "./utils/sourceStorage";
 
 const iconCatalog = catalog as IconCatalog;
+const SvgToReactNativeConverter = lazy(() =>
+  import("./features/svg-converter/SvgToReactNativeConverter").then(
+    (module) => ({
+      default: module.SvgToReactNativeConverter,
+    }),
+  ),
+);
+const GuidePage = lazy(() =>
+  import("./features/guide/GuidePage").then((module) => ({
+    default: module.GuidePage,
+  })),
+);
 
 export default function App() {
   return <IconViewer catalog={iconCatalog} />;
 }
 
 export function IconViewer({ catalog }: { catalog: IconCatalog }) {
-  const [activeTab, setActiveTab] = useState<AppTab>("catalog");
+  const [activeTab, setActiveTab] = useState<AppTab>(() =>
+    getTabFromPath(window.location.pathname),
+  );
   const [activeCatalog, setActiveCatalog] = useState<IconCatalog>(catalog);
   const [query, setQuery] = useState("");
   const [category, setCategory] = useState("all");
@@ -37,7 +52,9 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
   const categories = useMemo(() => {
     return [
       "all",
-      ...Array.from(new Set(activeCatalog.icons.map((icon) => icon.category))).sort(),
+      ...Array.from(
+        new Set(activeCatalog.icons.map((icon) => icon.category)),
+      ).sort(),
     ];
   }, [activeCatalog.icons]);
 
@@ -68,6 +85,15 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
     if (storedActiveSource) {
       void scanSource(storedActiveSource);
     }
+  }, []);
+
+  useEffect(() => {
+    function syncRoute() {
+      setActiveTab(getTabFromPath(window.location.pathname));
+    }
+
+    window.addEventListener("popstate", syncRoute);
+    return () => window.removeEventListener("popstate", syncRoute);
   }, []);
 
   async function copy(value: string, label: string) {
@@ -101,6 +127,15 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
     setSelectedFilePath(catalog.icons[0]?.filePath ?? null);
   }
 
+  function navigateTo(tab: AppTab) {
+    const nextPath = appRoutes[tab];
+    if (window.location.pathname !== nextPath) {
+      window.history.pushState(null, "", nextPath);
+    }
+
+    setActiveTab(tab);
+  }
+
   async function scanFromApi(endpoint: string, body?: Record<string, string>) {
     setIsScanning(true);
 
@@ -124,7 +159,9 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
       setCategory("all");
       setQuery("");
       localStorage.setItem(activeSourceKey, payload.sourceDir);
-      toast.success(`Scanned ${formatIconCount(payload.catalog.icons.length)}.`);
+      toast.success(
+        `Scanned ${formatIconCount(payload.catalog.icons.length)}.`,
+      );
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       toast.error(message);
@@ -135,41 +172,51 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
 
   return (
     <main className="app-shell">
-      <AppHeader
-        generatedAt={activeCatalog.generatedAt}
-        iconCount={visibleIcons.length}
-      />
+      <AppHeader />
 
       {activeCatalog.setupError ? (
         <SetupError message={activeCatalog.setupError} />
       ) : null}
 
-      <AppTabs activeTab={activeTab} onChange={setActiveTab} />
+      <div className="app-nav-row">
+        <AppTabs activeTab={activeTab} onNavigate={navigateTo} />
+        {activeTab === "catalog" ? (
+          <SourceControls
+            activeSource={activeSource}
+            isScanning={isScanning}
+            onChooseSourceFolder={chooseSourceFolder}
+            onClearSource={clearSource}
+            onRescanSourceFolder={rescanSourceFolder}
+            onScanSource={(sourceDir) => {
+              void scanSource(sourceDir);
+            }}
+            recentSources={recentSources}
+          />
+        ) : null}
+      </div>
 
       {activeTab === "catalog" ? (
         <IconCatalogView
-          activeSource={activeSource}
           category={category}
           categories={categories}
           errors={activeCatalog.errors}
-          isScanning={isScanning}
+          iconCount={visibleIcons.length}
           onCategoryChange={setCategory}
-          onChooseSourceFolder={chooseSourceFolder}
-          onClearSource={clearSource}
           onCopy={copy}
           onQueryChange={setQuery}
-          onRescanSourceFolder={rescanSourceFolder}
-          onScanSource={(sourceDir) => {
-            void scanSource(sourceDir);
-          }}
           onSelectIcon={setSelectedFilePath}
           query={query}
-          recentSources={recentSources}
           selectedIcon={selectedIcon}
           visibleIcons={visibleIcons}
         />
+      ) : activeTab === "converter" ? (
+        <Suspense fallback={<PageLoading />}>
+          <SvgToReactNativeConverter onCopy={copy} />
+        </Suspense>
       ) : (
-        <SvgToReactNativeConverter onCopy={copy} />
+        <Suspense fallback={<PageLoading />}>
+          <GuidePage />
+        </Suspense>
       )}
 
       <ToastContainer
@@ -177,8 +224,29 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
         closeOnClick
         hideProgressBar
         newestOnTop
-        position="bottom-right"
+        position="top-right"
       />
     </main>
+  );
+}
+
+function getTabFromPath(pathname: string): AppTab {
+  if (pathname === appRoutes.converter) {
+    return "converter";
+  }
+
+  if (pathname === appRoutes.guide) {
+    return "guide";
+  }
+
+  return "catalog";
+}
+
+function PageLoading() {
+  return (
+    <section className="empty-state" aria-live="polite">
+      <h2>Loading page</h2>
+      <p>Preparing view.</p>
+    </section>
   );
 }

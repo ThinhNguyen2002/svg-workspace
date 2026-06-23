@@ -1,0 +1,17 @@
+{
+  "name": "SVG workspace",
+  "short_name": "SVG workspace",
+  "description": "Browse, preview, and convert SVG assets for React Native, React, and raw SVG workflows.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#f3f6fb",
+  "theme_color": "#A7FC7C",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

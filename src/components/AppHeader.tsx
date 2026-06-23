@@ -1,21 +1,22 @@
-import { formatGeneratedAt, formatIconCount } from "../utils/format";
-
-export function AppHeader({
-  generatedAt,
-  iconCount,
-}: {
-  generatedAt: string | null;
-  iconCount: number;
-}) {
+export function AppHeader() {
   return (
     <header className="app-header">
-      <div>
-        <h1>Icon View</h1>
-        <p>React Native SVG icon catalog</p>
-      </div>
-      <div className="scan-meta" aria-label="Catalog metadata">
-        <strong>{formatIconCount(iconCount)}</strong>
-        <span>{formatGeneratedAt(generatedAt)}</span>
+      <div className="app-header-main">
+        <div className="app-mark" aria-hidden="true">
+          <img src="/favicon.svg" alt="" />
+        </div>
+        <div className="app-heading">
+          <div className="app-title">
+            <h1>
+              <span>SVG</span>
+              <span>workspace</span>
+            </h1>
+          </div>
+          <p>
+            Browse SVG assets and components, inspect usage, and convert files
+            for React Native or React.
+          </p>
+        </div>
       </div>
     </header>
   );

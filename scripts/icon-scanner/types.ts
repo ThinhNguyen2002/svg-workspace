@@ -4,10 +4,13 @@ export type IconPropUsage = {
   shorthand: boolean;
 };
 
+export type IconSourceType = 'react-native' | 'react' | 'svg-file';
+
 export type IconRecord = {
   name: string;
   category: string;
   filePath: string;
+  sourceType?: IconSourceType;
   svg: string;
   importSnippet: string;
   props?: IconPropUsage[];
@@ -23,6 +26,7 @@ export type IconCatalog = {
   generatedAt: string | null;
   status: 'ok' | 'setup-error';
   setupError: string | null;
+  sourceTypes?: IconSourceType[];
   icons: IconRecord[];
   errors: IconScanError[];
 };

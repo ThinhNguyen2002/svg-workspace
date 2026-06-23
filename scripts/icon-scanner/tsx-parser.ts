@@ -3,7 +3,7 @@ import path from 'node:path';
 import { parse } from '@babel/parser';
 import * as t from '@babel/types';
 import { convertSvgAttributeName, convertSvgElementName, isSupportedSvgElement } from './svg-attributes';
-import type { IconPropUsage, ParsedIconResult } from './types';
+import type { IconPropUsage, IconSourceType, ParsedIconResult } from './types';
 
 type ComponentCandidate = {
   name: string;
@@ -77,10 +77,17 @@ const supportedSvgAttributes = new Set([
   'text-anchor',
   'href',
   'shape-rendering',
-  'preserveAspectRatio'
+  'preserveAspectRatio',
+  'xmlns',
+  'xmlns:xlink',
+  'role',
+  'class',
+  'focusable',
+  'aria-hidden',
+  'aria-label'
 ]);
 
-const ignoredSvgAttributes = new Set(['testID']);
+const ignoredSvgAttributes = new Set(['testID', 'key']);
 
 export function parseIconSource(source: string, options: ParseIconOptions = {}): ParsedIconResult {
   let ast: t.File;
@@ -111,17 +118,13 @@ export function parseIconSource(source: string, options: ParseIconOptions = {}):
     if (mapped.ok) {
       return {
         ok: true,
-        icon: {
-          name: candidate.name,
-          svg: mapped.svg,
-          ...(candidate.props.length > 0 ? { props: candidate.props } : {})
-        }
+        icon: buildParsedIcon(candidate.name, mapped.svg, 'react-native', candidate.props)
       };
     }
 
     if (t.isJSXElement(selectedJsx)) {
       const rootName = getJsxElementName(selectedJsx.openingElement.name);
-      return { ok: false, reason: `Root JSX element must be Svg, found ${rootName}` };
+      return { ok: false, reason: `Root JSX element must be Svg or svg, found ${rootName}` };
     }
 
     return { ok: false, reason: `Unsupported JSX return type for ${candidate.name}` };
@@ -133,11 +136,7 @@ export function parseIconSource(source: string, options: ParseIconOptions = {}):
     if (mapped.ok) {
       return {
         ok: true,
-        icon: {
-          name: candidate.name,
-          svg: mapped.svg,
-          ...(candidate.props.length > 0 ? { props: candidate.props } : {})
-        }
+        icon: buildParsedIcon(candidate.name, mapped.svg, 'react-native', candidate.props)
       };
     }
 
@@ -146,11 +145,21 @@ export function parseIconSource(source: string, options: ParseIconOptions = {}):
 
   return {
     ok: true,
-    icon: {
-      name: candidate.name,
-      svg: rendered.svg,
-      ...(candidate.props.length > 0 ? { props: candidate.props } : {})
-    }
+    icon: buildParsedIcon(
+      candidate.name,
+      rendered.svg,
+      getJsxElementName(jsx.openingElement.name) === 'svg' ? 'react' : 'react-native',
+      candidate.props
+    )
+  };
+}
+
+function buildParsedIcon(name: string, svg: string, sourceType: IconSourceType, props: IconPropUsage[]) {
+  return {
+    name,
+    sourceType,
+    svg,
+    ...(props.length > 0 ? { props } : {})
   };
 }
 
@@ -688,6 +697,11 @@ function renderExpressionAttributeValue(
   }
 
   if (t.isIdentifier(expression)) {
+    const defaultValue = defaultProps.get(expression.name);
+    if (defaultValue) {
+      return defaultValue;
+    }
+
     if (expression.name === 'length') {
       return '100%';
     }
@@ -700,7 +714,7 @@ function renderExpressionAttributeValue(
       return 'currentColor';
     }
 
-    return defaultProps.get(expression.name) ?? null;
+    return null;
   }
 
   if (t.isMemberExpression(expression)) {
@@ -982,9 +996,9 @@ function renderTemplateLiteral(expression: t.TemplateLiteral, defaultProps: Map<
 function selectPreviewJsx(expression: ReturnedExpression, defaultProps: Map<string, string>): ReturnedExpression {
   if (t.isJSXFragment(expression)) {
     for (const child of expression.children) {
-      if (t.isJSXElement(child) && getJsxElementName(child.openingElement.name) === 'Svg') {
-        return child;
-      }
+    if (t.isJSXElement(child) && isSvgRootName(getJsxElementName(child.openingElement.name))) {
+      return child;
+    }
     }
     return expression;
   }
@@ -1004,7 +1018,7 @@ function findPreviewSvgElement(
   const selected = selectPreviewJsx(expression, defaultProps);
 
   if (t.isJSXElement(selected)) {
-    if (getJsxElementName(selected.openingElement.name) === 'Svg') {
+    if (isSvgRootName(getJsxElementName(selected.openingElement.name))) {
       return selected;
     }
 
@@ -1116,6 +1130,10 @@ function getPreviewScalar(expression: t.Expression | t.PrivateName, defaultProps
   }
 
   return null;
+}
+
+function isSvgRootName(name: string): boolean {
+  return name === 'Svg' || name === 'svg';
 }
 
 function getJsxElementName(name: t.JSXIdentifier | t.JSXMemberExpression | t.JSXNamespacedName): string {

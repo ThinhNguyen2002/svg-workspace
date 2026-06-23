@@ -1,105 +1,70 @@
 import type { IconCatalog, IconRecord } from "../../types";
 import { IconGrid } from "./IconGrid";
 import { DetailPanel } from "./DetailPanel";
+import { formatIconCount } from "../../utils/format";
 
 export function IconCatalogView({
-  activeSource,
   category,
   categories,
   errors,
-  isScanning,
+  iconCount,
   onCategoryChange,
-  onChooseSourceFolder,
-  onClearSource,
   onCopy,
   onQueryChange,
-  onRescanSourceFolder,
-  onScanSource,
   onSelectIcon,
   query,
-  recentSources,
   selectedIcon,
   visibleIcons,
 }: {
-  activeSource: string | null;
   category: string;
   categories: string[];
   errors: IconCatalog["errors"];
-  isScanning: boolean;
+  iconCount: number;
   onCategoryChange: (category: string) => void;
-  onChooseSourceFolder: () => void;
-  onClearSource: () => void;
   onCopy: (value: string, label: string) => Promise<void>;
   onQueryChange: (query: string) => void;
-  onRescanSourceFolder: () => void;
-  onScanSource: (sourceDir: string) => void;
   onSelectIcon: (filePath: string) => void;
   query: string;
-  recentSources: string[];
   selectedIcon: IconRecord | null;
   visibleIcons: IconRecord[];
 }) {
   return (
     <>
-      <section className="source-row" aria-label="Icon source controls">
-        <label>
-          <span>Icon folder</span>
-          <select
-            value={activeSource ?? ""}
-            onChange={(event) => {
-              const nextSource = event.target.value;
-              if (nextSource) {
-                onScanSource(nextSource);
-              } else {
-                onClearSource();
-              }
-            }}
-          >
-            <option value="">Generated catalog</option>
-            {recentSources.map((source) => (
-              <option key={source} value={source}>
-                {source}
-              </option>
-            ))}
-          </select>
-        </label>
-        <button type="button" onClick={onChooseSourceFolder} disabled={isScanning}>
-          Choose folder
-        </button>
-        <button
-          aria-label="Re-scan icon folder"
-          className="rescan-button"
-          type="button"
-          onClick={onRescanSourceFolder}
-          disabled={isScanning || !activeSource}
-        >
-          ↻
-        </button>
-      </section>
-
-      <section className="tool-row" aria-label="Icon filters">
-        <label>
-          <span>Search icons</span>
-          <input
-            value={query}
-            onChange={(event) => onQueryChange(event.target.value)}
-            placeholder="Search by name"
-            type="search"
-          />
-        </label>
-        <label>
-          <span>Category</span>
-          <select
-            value={category}
-            onChange={(event) => onCategoryChange(event.target.value)}
-          >
-            {categories.map((item) => (
-              <option key={item} value={item}>
-                {item === "all" ? "All categories" : item}
-              </option>
-            ))}
-          </select>
-        </label>
+      <section className="catalog-controls" aria-label="Icon catalog controls">
+        <section className="tool-row" aria-label="Icon filters">
+          <label className="control-field search-field">
+            <span>Search icons</span>
+            <input
+              value={query}
+              onChange={(event) => onQueryChange(event.target.value)}
+              placeholder="Search by name"
+              type="search"
+            />
+          </label>
+          <label className="control-field category-field">
+            <span>Category</span>
+            <select
+              value={category}
+              onChange={(event) => onCategoryChange(event.target.value)}
+            >
+              {categories.map((item) => (
+                <option key={item} value={item}>
+                  {item === "all" ? "All categories" : item}
+                </option>
+              ))}
+            </select>
+          </label>
+        </section>
+        <div className="catalog-summary">
+          {errors.length > 0 ? (
+            <a href="#unsupported-files">
+              {errors.length} unsupported
+            </a>
+          ) : null}
+          <div className="catalog-count-pill" aria-label="Visible icon count">
+            <strong>{formatIconCount(iconCount)}</strong>
+          </div>
+        </div>
       </section>
 
       <section className="viewer-layout">
@@ -130,7 +95,7 @@ function UnsupportedFiles({ errors }: { errors: IconCatalog["errors"] }) {
   }
 
   return (
-    <section className="unsupported-files">
+    <section className="unsupported-files" id="unsupported-files">
       <h2>Unsupported files</h2>
       <ul>
         {errors.map((error) => (

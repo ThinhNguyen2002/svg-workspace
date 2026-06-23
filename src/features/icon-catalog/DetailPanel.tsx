@@ -69,6 +69,14 @@ export function DetailPanel({
 }
 
 function buildUsageExample(icon: IconRecord): string {
+  if (icon.sourceType === "svg-file") {
+    return [
+      icon.importSnippet,
+      "",
+      `<img src={${icon.name}} alt="" />`,
+    ].join("\n");
+  }
+
   const props = icon.props ?? [];
 
   if (props.length === 0) {
