@@ -1,4 +1,5 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
+import { Analytics } from "@vercel/analytics/react";
 import { ToastContainer, toast } from "react-toastify";
 // @ts-ignore
 import "react-toastify/dist/ReactToastify.css";
@@ -288,6 +289,7 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
         newestOnTop
         position="top-right"
       />
+      <Analytics />
     </main>
   );
 }
