@@ -1,5 +1,6 @@
 import { lazy, Suspense, useEffect, useMemo, useState } from "react";
 import { Analytics } from "@vercel/analytics/react";
+import { SpeedInsights } from "@vercel/speed-insights/react";
 import { ToastContainer, toast } from "react-toastify";
 // @ts-ignore
 import "react-toastify/dist/ReactToastify.css";
@@ -290,6 +291,7 @@ export function IconViewer({ catalog }: { catalog: IconCatalog }) {
         position="top-right"
       />
       <Analytics />
+      <SpeedInsights />
     </main>
   );
 }
