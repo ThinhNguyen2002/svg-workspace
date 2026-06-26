@@ -57,6 +57,7 @@ export function convertSvgToJsx(
 
 function buildReactNativeComponentCode(root: Element, componentName: string) {
   const imports = new Set<string>(["Svg"]);
+  const defaultSize = getReactNativeDefaultSize(root);
   const jsx = renderSvgNode(root, 1, imports, {
     isRoot: true,
     target: "react-native",
@@ -84,14 +85,59 @@ function buildReactNativeComponentCode(root: Element, componentName: string) {
     `import { SIZE_VALUE } from '@src/constants';`,
     "",
     `const ${componentName}: FC<IconSVGProps> = ({`,
-    `  width = SIZE_VALUE._24,`,
-    `  height = SIZE_VALUE._24,`,
+    `  width = SIZE_VALUE._${defaultSize.width},`,
+    `  height = SIZE_VALUE._${defaultSize.height},`,
     `}) => (`,
     jsx,
     ");",
     "",
     `export default ${componentName};`,
   ].join("\n");
+}
+
+function getReactNativeDefaultSize(root: Element) {
+  const viewBoxSize = getViewBoxSize(root.getAttribute("viewBox"));
+  const width = getNumericSvgSize(root.getAttribute("width")) ?? viewBoxSize?.width ?? 24;
+  const height = getNumericSvgSize(root.getAttribute("height")) ?? viewBoxSize?.height ?? 24;
+
+  return {
+    width,
+    height,
+  };
+}
+
+function getNumericSvgSize(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const match = /^\s*(\d+(?:\.\d+)?)(?:px)?\s*$/i.exec(value);
+  if (!match) {
+    return null;
+  }
+
+  const numericValue = Number(match[1]);
+  return Number.isFinite(numericValue) ? formatSizeValue(numericValue) : null;
+}
+
+function getViewBoxSize(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  const parts = value.trim().split(/[\s,]+/).map(Number);
+  if (parts.length !== 4 || parts.some((part) => !Number.isFinite(part))) {
+    return null;
+  }
+
+  return {
+    width: formatSizeValue(parts[2]),
+    height: formatSizeValue(parts[3]),
+  };
+}
+
+function formatSizeValue(value: number) {
+  return Number.isInteger(value) ? String(value) : String(value).replace(".", "_");
 }
 
 function buildReactComponentCode(root: Element, componentName: string) {

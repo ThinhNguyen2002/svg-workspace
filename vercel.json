@@ -22,7 +22,19 @@
   ],
   "rewrites": [
     {
-      "source": "/((?!api/|assets/|robots.txt|sitemap.xml|site.webmanifest|favicon.svg|og-image.svg).*)",
+      "source": "/converter",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/converter/:path*",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/guide",
+      "destination": "/index.html"
+    },
+    {
+      "source": "/guide/:path*",
       "destination": "/index.html"
     }
   ]
