@@ -1,5 +1,6 @@
 import react from '@vitejs/plugin-react';
 import { execFile } from 'node:child_process';
+import fs from 'node:fs';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { promisify } from 'node:util';
 import { defineConfig, type Plugin, type ViteDevServer } from 'vite';
@@ -22,7 +23,7 @@ const appKeywords = [
 const appRoutes = ['/', '/converter', '/guide'];
 
 export default defineConfig({
-  plugins: [react(), productionSeoPlugin(), iconSourceApiPlugin()],
+  plugins: [react(), productionSeoPlugin(), spaStaticRoutePagesPlugin(), iconSourceApiPlugin()],
   test: {
     environment: 'jsdom',
     setupFiles: ['./test/setup.ts'],
@@ -133,6 +134,26 @@ function makeSitemap(siteUrl: string): string {
     '</urlset>',
     ''
   ].join('\n');
+}
+
+function spaStaticRoutePagesPlugin(): Plugin {
+  return {
+    name: 'spa-static-route-pages',
+    writeBundle(options) {
+      const outDir = options.dir ?? 'dist';
+      const indexPath = `${outDir}/index.html`;
+      if (!fs.existsSync(indexPath)) {
+        return;
+      }
+
+      const indexHtml = fs.readFileSync(indexPath, 'utf8');
+      for (const route of appRoutes.filter((route) => route !== '/')) {
+        const routeDir = `${outDir}/${route.replace(/^\//, '')}`;
+        fs.mkdirSync(routeDir, { recursive: true });
+        fs.writeFileSync(`${routeDir}/index.html`, indexHtml, 'utf8');
+      }
+    }
+  };
 }
 
 function iconSourceApiPlugin(): Plugin {
